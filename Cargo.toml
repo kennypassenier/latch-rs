@@ -12,12 +12,12 @@ clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
 toml = "0.8"
-toml_edit = "0.22"
-octocrab = "0.41"
+reqwest = { version = "0.12", features = ["json"] }
 chacha20poly1305 = "0.10"
 argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
 keyring = "3"
 dirs = "5"
 anyhow = "1"
@@ -26,12 +26,19 @@ dialoguer = "0.11"
 indicatif = "0.17"
 base64 = "0.22"
 hex = "0.4"
-rand = "0.8"
-dotenvy = "0.15"
-sha2 = "0.10"
-aes-gcm = "0.10"
-which = "7"
+ignore = "0.4"
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full", "test-util"] }
 
 [profile.release]
 lto = true
 strip = true
+
+[lib]
+name = "latch_rs"
+path = "src/lib.rs"

@@ -1,90 +1,71 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
+// ── Data model ────────────────────────────────────────────────────────────────
+
+/// A single encrypted-file mapping stored inside the manifest.
+///
+/// `local_path` is the path relative to the project root, e.g. `backend/.env`.
+/// The corresponding remote path is derived at runtime via
+/// [`crate::discovery::remote_path`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMapping {
+    /// Path to the plaintext file, relative to the project root.
+    pub local_path: String,
+}
+
+/// Top-level manifest stored as `{project}/manifest.json` in the secrets repo.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
+    /// Schema version – currently always `1`.
     pub version: u32,
+    /// Project name (must match the folder under which it is stored).
     pub project: String,
-    #[serde(rename = "kdf_salt")]
-    pub kdf_salt_b64: String,
-    #[serde(flatten)]
-    pub envs: Envs,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Envs {
-    #[serde(default)]
-    pub dev: Vec<EnvMapping>,
-    #[serde(default)]
-    pub prod: Vec<EnvMapping>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnvMapping {
-    pub source: String,
-    #[serde(rename = "target")]
-    pub target_dir: String,
+    /// Base64-encoded Argon2 salt used when the project was initialised in
+    /// passphrase mode.  `None` for raw-key mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kdf_salt: Option<String>,
+    /// Map of environment name → list of file mappings.
+    /// E.g. `{ "dev": [...], "prod": [...] }`.
+    pub envs: HashMap<String, Vec<FileMapping>>,
 }
 
 impl Manifest {
-    pub fn new(project: &str) -> Self {
+    /// Create a blank manifest for `project`.
+    pub fn new(project: &str, kdf_salt: Option<String>) -> Self {
         Self {
             version: 1,
             project: project.to_string(),
-            kdf_salt_b64: base64::encode(rand::random::<[u8; 16]>()),
-            envs: Envs::default(),
+            kdf_salt,
+            envs: HashMap::new(),
         }
     }
 
-    pub fn add_mapping(&mut self, env_name: &'static str, source: &str, target_dir: &str) {
-        self.envs.add(env_name, source, target_dir);
+    /// Remote path of the manifest file itself inside the secrets repo.
+    pub fn remote_path(project: &str) -> String {
+        format!("{}/manifest.json", project)
     }
 
-    pub fn get_mappings(&self, env_name: &str) -> &[EnvMapping] {
-        match env_name {
-            "dev" => &self.envs.dev,
-            "prod" => &self.envs.prod,
-            _ => &[],
-        }
+    /// Serialise to pretty-printed JSON bytes.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let json =
+            serde_json::to_string_pretty(self).context("Serialising manifest")?;
+        Ok(json.into_bytes())
     }
 
-    pub fn remove_mapping(&mut self, env_name: &'static str, source: &str) {
-        match env_name {
-            "dev" => {
-                self.envs.dev.retain(|m| m.source != source);
-            }
-            "prod" => {
-                self.envs.prod.retain(|m| m.source != source);
-            }
-            _ => {}
-        }
+    /// Deserialise from raw JSON bytes.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        serde_json::from_slice(bytes).context("Parsing manifest JSON")
     }
-}
 
-impl Envs {
-    pub fn add(&mut self, env_name: &'static str, source: &str, target_dir: &str) {
-        let mappings = match env_name {
-            "dev" => &mut self.dev,
-            "prod" => &mut self.prod,
-            _ => return,
-        };
-
-        // Check if source already exists
-        if mappings.iter().any(|m| m.source == source) {
-            eprintln!(
-                "Warning: {} -> {} mapping already exists. Overwriting.",
-                source, target_dir
-            );
-        }
-
-        mappings.push(EnvMapping {
-            source: source.to_string(),
-            target_dir: target_dir.to_string(),
-        });
+    /// Return the mappings for `env`, defaulting to an empty slice.
+    pub fn get_env(&self, env: &str) -> &[FileMapping] {
+        self.envs.get(env).map(Vec::as_slice).unwrap_or(&[])
     }
-}
 
-impl Default for Manifest {
-    fn default() -> Self {
-        Self::new("default")
+    /// Replace the mapping list for `env` with `files`.
+    pub fn set_env(&mut self, env: &str, files: Vec<FileMapping>) {
+        self.envs.insert(env.to_string(), files);
     }
 }

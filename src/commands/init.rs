@@ -1,30 +1,152 @@
-use crate::commands::{decrypt::decrypt_all_secrets, repo::secrets_repo_path};
-use crate::config::{Config, home_dir};
-use anyhow::Context;
+use anyhow::{Result, bail};
+use dialoguer::{Input, Password, Select};
+use std::env;
 
-/// Initialize a new project with its secrets repository configuration
-pub async fn init_project(project: &str) -> anyhow::Result<()> {
-    let repo_path = secrets_repo_path().context("Could not get secrets repo path")?;
+use crate::{
+    config::{
+        global::{GlobalConfig, ProjectEntry},
+        project::ProjectConfig,
+    },
+    credentials::{CredentialProvider, keyring_provider::KeyringProvider},
+    crypto::{
+        generate_key_hex,
+        kdf::{decode_salt, derive_key, generate_salt_b64},
+        parse_key,
+    },
+    github::{RemoteStorage as _, client::GitHubClient},
+    manifest::Manifest,
+};
 
-    // Create the parent directory for secrets if needed
-    let parent = repo_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("Invalid project name (no path separator)"))?;
+pub async fn run() -> Result<()> {
+    println!("Initialising Latch for this project\n");
 
-    std::fs::create_dir_all(parent).context("Failed to create secrets repo directory")?;
+    // ── Project name ──────────────────────────────────────────────────────────
+    let default_name = env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "myproject".to_string());
 
-    // Create a new encrypted key if it doesn't exist at the default location
-    let default_key_path = home_dir().join("key.bin");
+    let project_name: String = Input::new()
+        .with_prompt("Project name")
+        .default(default_name)
+        .interact_text()?;
 
-    if default_key_path.exists() {
-        // Key exists - copy it to the secrets repo
-        let repo_key_path = repo_path.join("key.bin");
-        std::fs::copy(&default_key_path, &repo_key_path)
-            .context("Failed to copy encryption key")?;
+    // ── Secrets repo ──────────────────────────────────────────────────────────
+    let secrets_repo: String = Input::new()
+        .with_prompt("GitHub secrets repo (owner/repo)")
+        .interact_text()?;
 
-        return Ok(());
-    } else {
-        // Key doesn't exist - bail out with an error
-        anyhow::bail!("No encryption key found. Run 'latch key set' first.");
+    if !secrets_repo.contains('/') {
+        bail!("Secrets repo must be in 'owner/repo' format, e.g. acme/latch-secrets");
     }
+
+    // ── Default environment ───────────────────────────────────────────────────
+    let default_env: String = Input::new()
+        .with_prompt("Default environment")
+        .default("dev".to_string())
+        .interact_text()?;
+
+    // ── GitHub PAT ────────────────────────────────────────────────────────────
+    let pat: String = Password::new()
+        .with_prompt("GitHub Personal Access Token (repo scope)")
+        .interact()?;
+
+    // ── Encryption key ────────────────────────────────────────────────────────
+    let key_choices = &[
+        "Generate random key (recommended)",
+        "Derive from passphrase",
+        "Paste existing key (hex or base64)",
+    ];
+    let key_mode = Select::new()
+        .with_prompt("Encryption key setup")
+        .items(key_choices)
+        .default(0)
+        .interact()?;
+
+    let (key_hex, kdf_salt_b64) = match key_mode {
+        0 => {
+            // Generate random key
+            let hex = generate_key_hex();
+            println!("\n  Generated key (save this somewhere safe!)\n  {}\n", hex);
+            (hex, None)
+        }
+        1 => {
+            // Passphrase mode – derive key + store salt in manifest
+            let passphrase: String = Password::new()
+                .with_prompt("Passphrase")
+                .with_confirmation("Confirm passphrase", "Passphrases do not match")
+                .interact()?;
+            let salt_b64 = generate_salt_b64();
+            let salt = decode_salt(&salt_b64)?;
+            let key = derive_key(&passphrase, &salt)?;
+            let hex = hex::encode(key);
+            println!("\n  KDF salt (stored in manifest): {}\n", salt_b64);
+            (hex, Some(salt_b64))
+        }
+        2 => {
+            // Accept pasted key
+            let raw: String = Input::new()
+                .with_prompt("Key (64 hex chars or 44 base64 chars)")
+                .interact_text()?;
+            // Validate key by parsing it
+            parse_key(&raw)?;
+            (raw, None)
+        }
+        _ => unreachable!(),
+    };
+
+    // ── Persist to keyring ────────────────────────────────────────────────────
+    let keyring = KeyringProvider;
+    keyring.set_credentials(&project_name, Some(&pat), Some(&key_hex))?;
+    println!("  Credentials saved to OS keyring.");
+
+    // ── Write .latch/config.toml in CWD ──────────────────────────────────────
+    let cwd = env::current_dir()?;
+    let project_cfg = ProjectConfig {
+        name: project_name.clone(),
+        secrets_repo: secrets_repo.clone(),
+        default_env: default_env.clone(),
+    };
+    project_cfg.save_in(&cwd)?;
+    println!("  Wrote .latch/config.toml");
+
+    // ── Update ~/.latch/config.toml (fallback) ────────────────────────────────
+    let mut global = GlobalConfig::load()?;
+    global.upsert_project(ProjectEntry {
+        name: project_name.clone(),
+        secrets_repo: secrets_repo.clone(),
+        default_env: default_env.clone(),
+        key_hex: None, // Don't persist key in plaintext config by default
+        github_pat: None,
+    });
+    global.save()?;
+    println!("  Updated ~/.latch/config.toml");
+
+    // ── Bootstrap manifest in GitHub repo if absent ───────────────────────────
+    let client = GitHubClient::new(&secrets_repo, &pat)?;
+    let manifest_path = Manifest::remote_path(&project_name);
+
+    match client.get_sha(&manifest_path).await? {
+        Some(_) => {
+            println!("  Manifest already exists in remote – skipping creation.");
+        }
+        None => {
+            let manifest = Manifest::new(&project_name, kdf_salt_b64);
+            let bytes = manifest.to_bytes()?;
+            client
+                .push_file(
+                    &manifest_path,
+                    &bytes,
+                    &format!("latch: init manifest for {}", project_name),
+                )
+                .await?;
+            println!("  Created manifest.json in remote repo.");
+        }
+    }
+
+    println!(
+        "\nLatch initialised!  Run 'latch save --env {}' to encrypt and push your .env files.",
+        default_env
+    );
+    Ok(())
 }

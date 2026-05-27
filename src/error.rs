@@ -3,34 +3,28 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum LatchError {
     #[error("GitHub API error: {0}")]
-    GitHubApi(#[from] octocrab::Error),
+    GitHub(String),
 
-    #[error("Crypto error: {0}")]
+    #[error("Encryption/decryption failed: {0}")]
     Crypto(String),
 
-    #[error("Config error: {0}")]
+    #[error("Configuration error: {0}")]
     Config(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Key not found. Please run 'latch key set' or set LATCH_KEY env var.")]
+    #[error("No encryption key found. Run 'latch init' or set the LATCH_KEY environment variable.")]
     KeyNotFound,
 
-    #[error("Manifest not found in secrets repo. Run 'latch init' first.")]
+    #[error("No GitHub PAT found. Run 'latch init' or set the LATCH_PAT environment variable.")]
+    PatNotFound,
+
+    #[error("manifest.json not found in remote repo. Run 'latch init' first.")]
     ManifestNotFound,
 
-    #[error("Invalid manifest format: {0}")]
-    InvalidManifest(String),
-
-    #[error("Project '{0}' not configured. Run 'latch init' or set LATCH_PROJECT env var.")]
-    ProjectNotFound(String),
-
-    #[error("Environment '{0}' not found for project '{1}'.")]
-    EnvNotFound(String, String),
-
-    #[error("Command error: {0}")]
-    Command(#[from] anyhow::Error),
+    #[error("Not initialised. Run 'latch init' in your project directory first.")]
+    NotInitialised,
 }
 
 pub type Result<T> = std::result::Result<T, LatchError>;
