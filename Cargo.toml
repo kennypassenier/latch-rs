@@ -1,0 +1,37 @@
+[package]
+name = "latch-rs"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "latch"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+toml_edit = "0.22"
+octocrab = "0.41"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+keyring = "3"
+dirs = "5"
+anyhow = "1"
+thiserror = "2"
+dialoguer = "0.11"
+indicatif = "0.17"
+base64 = "0.22"
+hex = "0.4"
+rand = "0.8"
+dotenvy = "0.15"
+sha2 = "0.10"
+aes-gcm = "0.10"
+which = "7"
+
+[profile.release]
+lto = true
+strip = true
