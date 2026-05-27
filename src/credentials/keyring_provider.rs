@@ -35,10 +35,7 @@ impl KeyringProvider {
     /// Retrieve a value using the full `username` slot directly (used for
     /// env-scoped key slots like `"myapp.key.prod"`).
     pub fn get_raw(slot: &str) -> Option<String> {
-        keyring::Entry::new(SERVICE, slot)
-            .ok()?
-            .get_password()
-            .ok()
+        keyring::Entry::new(SERVICE, slot).ok()?.get_password().ok()
     }
 
     /// Persist a value using the full `username` slot directly.
@@ -59,12 +56,7 @@ impl CredentialProvider for KeyringProvider {
         Self::get(project, "key")
     }
 
-    fn set_credentials(
-        &self,
-        project: &str,
-        pat: Option<&str>,
-        key: Option<&str>,
-    ) -> Result<()> {
+    fn set_credentials(&self, project: &str, pat: Option<&str>, key: Option<&str>) -> Result<()> {
         if let Some(p) = pat {
             Self::set(project, "pat", p)?;
         }

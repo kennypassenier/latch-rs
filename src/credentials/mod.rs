@@ -14,19 +14,14 @@ pub trait CredentialProvider: Send + Sync {
     fn get_key(&self, project: &str) -> Option<String>;
 
     /// Persist credentials.  Not all providers support writing.
-    fn set_credentials(
-        &self,
-        project: &str,
-        pat: Option<&str>,
-        key: Option<&str>,
-    ) -> Result<()>;
+    fn set_credentials(&self, project: &str, pat: Option<&str>, key: Option<&str>) -> Result<()>;
 }
 
 // ── Fallback chain ────────────────────────────────────────────────────────────
 
 use crate::config::global::GlobalConfig;
-use keyring_provider::KeyringProvider;
 use env_provider::EnvVarProvider;
+use keyring_provider::KeyringProvider;
 
 /// Try providers in order: OS keyring → env vars → `~/.latch/config.toml`.
 /// Returns the first non-`None` value for each credential.
@@ -36,7 +31,9 @@ pub struct FallbackChain {
 
 impl FallbackChain {
     pub fn new(project: &str) -> Self {
-        Self { project: project.to_string() }
+        Self {
+            project: project.to_string(),
+        }
     }
 
     /// Returns the hex-encoded 32-byte key or an error with a helpful message.

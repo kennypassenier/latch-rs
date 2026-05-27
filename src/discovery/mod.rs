@@ -56,7 +56,11 @@ pub fn flatten_path(local_path: &Path) -> String {
         .filter_map(|c| {
             let s = c.as_os_str().to_str()?;
             let s = s.trim_start_matches('.');
-            if s.is_empty() { None } else { Some(s.to_string()) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
         })
         .collect::<Vec<_>>()
         .join(".")
@@ -131,21 +135,29 @@ pub fn expand_env_vars(value: &str, known: &[(String, String)]) -> String {
         if bytes[i] == b'$' {
             i += 1;
             let braced = i < bytes.len() && bytes[i] == b'{';
-            if braced { i += 1; }
+            if braced {
+                i += 1;
+            }
             let start = i;
             while i < bytes.len() {
                 let c = bytes[i];
                 if braced {
-                    if c == b'}' { break; }
+                    if c == b'}' {
+                        break;
+                    }
                 } else if !c.is_ascii_alphanumeric() && c != b'_' {
                     break;
                 }
                 i += 1;
             }
             let var_name = std::str::from_utf8(&bytes[start..i]).unwrap_or("");
-            if braced && i < bytes.len() && bytes[i] == b'}' { i += 1; }
+            if braced && i < bytes.len() && bytes[i] == b'}' {
+                i += 1;
+            }
 
-            let val = known.iter().rev()
+            let val = known
+                .iter()
+                .rev()
                 .find(|(k, _)| k == var_name)
                 .map(|(_, v)| v.as_str())
                 .or_else(|| std::env::var(var_name).ok().as_deref().map(|_| ""))
@@ -154,7 +166,11 @@ pub fn expand_env_vars(value: &str, known: &[(String, String)]) -> String {
             let resolved = std::env::var(var_name)
                 .ok()
                 .or_else(|| {
-                    known.iter().rev().find(|(k, _)| k == var_name).map(|(_, v)| v.clone())
+                    known
+                        .iter()
+                        .rev()
+                        .find(|(k, _)| k == var_name)
+                        .map(|(_, v)| v.clone())
                 })
                 .unwrap_or_default();
             let _ = val; // replaced by resolved
