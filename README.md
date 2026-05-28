@@ -14,9 +14,11 @@ Latch keeps your team's secrets out of application repositories by encrypting ev
 - [First-time global setup](#first-time-global-setup)
 - [Per-project setup](#per-project-setup)
 - [Commands](#commands)
+  - [latch login](#latch-login)
   - [latch init](#latch-init)
+  - [latch project](#latch-project)
   - [latch save](#latch-save)
-  - [latch export](#latch-export)
+  - [latch load](#latch-load)
   - [latch status](#latch-status)
   - [latch rotate](#latch-rotate)
   - [latch run](#latch-run)
@@ -111,7 +113,7 @@ Each push to `main` publishes:
 
 ## First-time global setup
 
-Latch stores global configuration at `~/.latch/config.toml`. The file is created automatically the first time you run `latch init`. You do not need to edit it manually.
+Latch stores global configuration at `~/.latch/config.toml`. Use `latch login` once to store your PAT and default secrets repo in the OS keyring.
 
 Create your secrets repository on GitHub first. It should be **private** and contain only Latch-managed ciphertext. A good naming convention is `your-org/secrets` or `your-org/env-vault`.
 
@@ -119,7 +121,13 @@ Create your secrets repository on GitHub first. It should be **private** and con
 
 ## Per-project setup
 
-Run the following from the root of your application repository:
+Run the following from any shell once:
+
+```bash
+latch login
+```
+
+Then run this from the root of your application repository:
 
 ```bash
 cd ~/code/my-app
@@ -129,10 +137,10 @@ latch init
 Latch will ask you for:
 
 1. **Project name** — a short identifier used as the remote path prefix (e.g. `my-app`).
-2. **Secrets repository** — owner/repo on GitHub (e.g. `acme-corp/secrets`).
-3. **GitHub PAT** — stored in the OS keyring under `latch / my-app.pat`.
-4. **Default environment** — usually `dev`.
-5. **Encryption key** — you can generate a random key, derive one from a passphrase using Argon2id, or paste an existing key. The key is stored in the OS keyring under `latch / my-app.key`.
+2. **Default environment** — usually `dev`.
+3. **Encryption key** — only if this project has no key yet in keyring. You can generate a random key, derive one from a passphrase using Argon2id, or paste an existing key.
+
+`latch init` reuses the PAT and default secrets repo you stored via `latch login`.
 
 After `latch init`, two files are written into your project:
 
@@ -154,6 +162,20 @@ The manifest (`my-app/manifest.json`) is pushed to your secrets repository and t
 
 ## Commands
 
+### latch login
+
+Store global credentials in keyring.
+
+```
+latch login
+```
+
+Prompts for:
+1. GitHub PAT
+2. Default secrets repo (`owner/repo`)
+
+---
+
 ### latch init
 
 Interactive project initialisation. Run once per project.
@@ -162,7 +184,24 @@ Interactive project initialisation. Run once per project.
 latch init
 ```
 
-Creates `.latch/config.toml`, saves credentials to the OS keyring, and pushes the initial manifest to the secrets repository.
+Creates `.latch/config.toml`, links this folder to a project, and pushes the initial manifest to the secrets repository when missing.
+
+---
+
+### latch project
+
+Interactive project picker for the current folder.
+
+```
+latch project [--repo <owner/repo>] [--env <env>] [--list]
+```
+
+Default behavior (without flags):
+1. Reads PAT + default repo from keyring.
+2. Shows a selectable list of remote projects.
+3. Lets you choose environment.
+4. Writes `.latch/config.toml`.
+5. Optionally runs `latch load` immediately.
 
 ---
 
@@ -198,12 +237,12 @@ latch save --env prod
 
 ---
 
-### latch export
+### latch load
 
 Pull ciphertext from the secrets repository and decrypt it to local `.env` files.
 
 ```
-latch export [--env <env>] [--dry-run]
+latch load [--env <env>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -217,13 +256,13 @@ If a local `.env` file already exists and its content differs from the remote, L
 
 ```bash
 # Pull dev secrets
-latch export
+latch load
 
-# Preview what prod export would do (no writes)
-latch export --env prod --dry-run
+# Preview what prod load would do (no writes)
+latch load --env prod --dry-run
 
 # Pull staging secrets
-latch export --env staging
+latch load --env staging
 ```
 
 ---
@@ -246,7 +285,7 @@ Output uses simple icons:
 |---|---|
 | `✓` | In sync — local matches remote. |
 | `~` | Modified — local differs from remote. Run `latch save` to push changes. |
-| `!` | Missing locally — remote has this file but it does not exist locally. Run `latch export` to pull it. |
+| `!` | Missing locally — remote has this file but it does not exist locally. Run `latch load` to pull it. |
 | `✗` | Error fetching or decrypting. |
 
 **Example:**
@@ -340,7 +379,7 @@ latch key
 latch key --env staging
 ```
 
-After setting env-specific keys, `latch save --env prod` encrypts with the prod key, and only someone with that key can run `latch export --env prod`.
+After setting env-specific keys, `latch save --env prod` encrypts with the prod key, and only someone with that key can run `latch load --env prod`.
 
 ---
 
@@ -379,12 +418,14 @@ latch path remove
 
 ## Credential resolution
 
-For each project, Latch looks for the encryption key and GitHub PAT in this order:
+For each project, Latch looks for credentials in this order:
 
 1. **OS keyring** (env-specific slot) — `<project>.key.<env>` *(key only, when `--env` is supplied)*
-2. **OS keyring** (project-wide slot) — `<project>.key` / `<project>.pat`
-3. **Environment variables** — `LATCH_KEY` / `LATCH_PAT`
-4. **`~/.latch/config.toml`** — `key_hex` / `github_pat` fields
+2. **OS keyring** (project-wide slot) — `<project>.key`
+3. **OS keyring** (global slots) — `github.pat` and `github.secrets_repo`
+4. **OS keyring** (legacy project PAT slot) — `<project>.pat`
+5. **Environment variables** — `LATCH_KEY` / `LATCH_PAT`
+6. **`~/.latch/config.toml`** — `key_hex` / `github_pat` fields
 
 The first non-empty value wins.
 
@@ -451,21 +492,24 @@ cd my-app
 # Install latch
 cargo install --path path/to/latch-rs
 
-# Initialise — paste the shared PAT and the dev key when prompted
-latch init
+# One-time global login on your machine
+latch login
+
+# Link this folder to a project
+latch project
 
 # Pull dev secrets
-latch export
+latch load
 ```
 
 ### CI/CD (GitHub Actions example)
 
 ```yaml
-- name: Export secrets
+- name: Load secrets
   env:
     LATCH_KEY: ${{ secrets.LATCH_KEY_PROD }}
     LATCH_PAT: ${{ secrets.LATCH_PAT }}
-  run: latch export --env prod
+  run: latch load --env prod
 ```
 
 Or — to avoid writing secrets to disk entirely:
@@ -535,8 +579,8 @@ latch key --env prod
 # Save prod secrets — encrypted with the prod key only
 latch save --env prod
 
-# Only engineers with the prod key can export prod secrets
-latch export --env prod
+# Only engineers with the prod key can load prod secrets
+latch load --env prod
 ```
 
 Developers with only the dev key cannot decrypt prod secrets even if they have access to the secrets repository.
@@ -587,7 +631,7 @@ Ensure your Rust toolchain is at least 1.86 (`rustup update stable`). Latch uses
 
 ### `latch status` shows all files as `!` (missing)
 
-You have not exported the secrets locally yet. Run `latch export`.
+You have not loaded the secrets locally yet. Run `latch load`.
 
 ### `latch run` exits with code 127 (command not found)
 

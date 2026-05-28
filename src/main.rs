@@ -31,6 +31,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Store global GitHub credentials (PAT + default secrets repo) in keyring.
+    Login,
+
     /// Initialise Latch for the current project (interactive).
     Init,
 
@@ -42,7 +45,8 @@ enum Commands {
     },
 
     /// Pull and decrypt .env files from the remote secrets repo.
-    Export {
+    #[command(alias = "export")]
+    Load {
         /// Source environment name.
         #[arg(long, short, default_value = "dev")]
         env: String,
@@ -89,10 +93,17 @@ enum Commands {
         action: PathCommands,
     },
 
-    /// Discover and bind remote projects for export in the current folder.
+    /// Interactively bind this folder to a remote project.
     Project {
-        #[command(subcommand)]
-        action: ProjectCommands,
+        /// Secrets repo in owner/repo format. If omitted, uses login defaults.
+        #[arg(long)]
+        repo: Option<String>,
+        /// Environment to use; if omitted you can pick interactively.
+        #[arg(long, short)]
+        env: Option<String>,
+        /// List projects in the repo and exit.
+        #[arg(long)]
+        list: bool,
     },
 }
 
@@ -105,25 +116,6 @@ enum PathCommands {
     Remove,
     /// Show PATH installation status for the current machine.
     Status,
-}
-
-#[derive(Subcommand)]
-enum ProjectCommands {
-    /// List project names discovered in a secrets repo.
-    List {
-        /// Secrets repo in owner/repo format. If omitted, inferred from global config.
-        #[arg(long)]
-        repo: Option<String>,
-    },
-    /// Bind this folder to a discovered project and optionally export immediately.
-    Use {
-        /// Secrets repo in owner/repo format. If omitted, inferred from global config.
-        #[arg(long)]
-        repo: Option<String>,
-        /// Environment to use; if omitted you can pick interactively.
-        #[arg(long, short)]
-        env: Option<String>,
-    },
 }
 
 #[tokio::main]
@@ -142,9 +134,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
+        Commands::Login => commands::login::run().await,
         Commands::Init => commands::init::run().await,
         Commands::Save { env } => commands::save::run(&env).await,
-        Commands::Export { env, dry_run } => commands::export::run(&env, dry_run).await,
+        Commands::Load { env, dry_run } => commands::export::run(&env, dry_run).await,
         Commands::Status { env } => commands::status::run(&env).await,
         Commands::Rotate => commands::rotate::run().await,
         Commands::Run { env, command } => {
@@ -161,11 +154,12 @@ async fn main() -> anyhow::Result<()> {
             PathCommands::Remove => commands::path::remove().await,
             PathCommands::Status => commands::path::status().await,
         },
-        Commands::Project { action } => match action {
-            ProjectCommands::List { repo } => commands::project::list(repo.as_deref()).await,
-            ProjectCommands::Use { repo, env } => {
-                commands::project::use_in_current_dir(repo.as_deref(), env.as_deref()).await
+        Commands::Project { repo, env, list } => {
+            if list {
+                commands::project::list(repo.as_deref()).await
+            } else {
+                commands::project::run(repo.as_deref(), env.as_deref()).await
             }
-        },
+        }
     }
 }

@@ -7,7 +7,10 @@ use crate::{
         global::{GlobalConfig, ProjectEntry},
         project::ProjectConfig,
     },
-    credentials::{CredentialProvider, keyring_provider::KeyringProvider},
+    credentials::{
+        CredentialProvider, get_global_pat, get_global_secrets_repo,
+        keyring_provider::KeyringProvider,
+    },
     crypto::{
         generate_key_hex,
         kdf::{decode_salt, derive_key, generate_salt_b64},
@@ -19,6 +22,7 @@ use crate::{
 
 pub async fn run() -> Result<()> {
     println!("Initialising Latch for this project\n");
+    let keyring = KeyringProvider;
 
     // ── Project name ──────────────────────────────────────────────────────────
     let default_name = env::current_dir()
@@ -32,9 +36,17 @@ pub async fn run() -> Result<()> {
         .interact_text()?;
 
     // ── Secrets repo ──────────────────────────────────────────────────────────
-    let secrets_repo: String = Input::new()
-        .with_prompt("GitHub secrets repo (owner/repo)")
-        .interact_text()?;
+    let secrets_repo = match get_global_secrets_repo() {
+        Some(repo) => {
+            println!("  Using secrets repo from keyring: {}", repo);
+            repo
+        }
+        None => {
+            bail!(
+                "No default secrets repo found in keyring. Run 'latch login' first (it stores PAT + owner/repo)."
+            )
+        }
+    };
 
     if !secrets_repo.contains('/') {
         bail!("Secrets repo must be in 'owner/repo' format, e.g. acme/latch-secrets");
@@ -47,56 +59,67 @@ pub async fn run() -> Result<()> {
         .interact_text()?;
 
     // ── GitHub PAT ────────────────────────────────────────────────────────────
-    let pat: String = Password::new()
-        .with_prompt("GitHub Personal Access Token (repo scope)")
-        .interact()?;
+    let pat = match get_global_pat() {
+        Some(v) => {
+            println!("  Using GitHub PAT from keyring.");
+            v
+        }
+        None => {
+            bail!("No GitHub PAT found in keyring. Run 'latch login' first.")
+        }
+    };
 
     // ── Encryption key ────────────────────────────────────────────────────────
-    let key_choices = &[
-        "Generate random key (recommended)",
-        "Derive from passphrase",
-        "Paste existing key (hex or base64)",
-    ];
-    let key_mode = Select::new()
-        .with_prompt("Encryption key setup")
-        .items(key_choices)
-        .default(0)
-        .interact()?;
+    let existing_key = keyring.get_key(&project_name);
+    let (key_hex, kdf_salt_b64) = if let Some(existing) = existing_key {
+        println!("  Reusing existing project key from keyring.");
+        (existing, None)
+    } else {
+        let key_choices = &[
+            "Generate random key (recommended)",
+            "Derive from passphrase",
+            "Paste existing key (hex or base64)",
+        ];
+        let key_mode = Select::new()
+            .with_prompt("Encryption key setup")
+            .items(key_choices)
+            .default(0)
+            .interact()?;
 
-    let (key_hex, kdf_salt_b64) = match key_mode {
-        0 => {
-            // Generate random key
-            let hex = generate_key_hex();
-            println!("\n  Generated key (save this somewhere safe!)\n  {}\n", hex);
-            (hex, None)
+        match key_mode {
+            0 => {
+                // Generate random key
+                let hex = generate_key_hex();
+                println!("\n  Generated key (save this somewhere safe!)\n  {}\n", hex);
+                (hex, None)
+            }
+            1 => {
+                // Passphrase mode – derive key + store salt in manifest
+                let passphrase: String = Password::new()
+                    .with_prompt("Passphrase")
+                    .with_confirmation("Confirm passphrase", "Passphrases do not match")
+                    .interact()?;
+                let salt_b64 = generate_salt_b64();
+                let salt = decode_salt(&salt_b64)?;
+                let key = derive_key(&passphrase, &salt)?;
+                let hex = hex::encode(key);
+                println!("\n  KDF salt (stored in manifest): {}\n", salt_b64);
+                (hex, Some(salt_b64))
+            }
+            2 => {
+                // Accept pasted key
+                let raw: String = Input::new()
+                    .with_prompt("Key (64 hex chars or 44 base64 chars)")
+                    .interact_text()?;
+                // Validate key by parsing it
+                parse_key(&raw)?;
+                (raw, None)
+            }
+            _ => unreachable!(),
         }
-        1 => {
-            // Passphrase mode – derive key + store salt in manifest
-            let passphrase: String = Password::new()
-                .with_prompt("Passphrase")
-                .with_confirmation("Confirm passphrase", "Passphrases do not match")
-                .interact()?;
-            let salt_b64 = generate_salt_b64();
-            let salt = decode_salt(&salt_b64)?;
-            let key = derive_key(&passphrase, &salt)?;
-            let hex = hex::encode(key);
-            println!("\n  KDF salt (stored in manifest): {}\n", salt_b64);
-            (hex, Some(salt_b64))
-        }
-        2 => {
-            // Accept pasted key
-            let raw: String = Input::new()
-                .with_prompt("Key (64 hex chars or 44 base64 chars)")
-                .interact_text()?;
-            // Validate key by parsing it
-            parse_key(&raw)?;
-            (raw, None)
-        }
-        _ => unreachable!(),
     };
 
     // ── Persist credentials ──────────────────────────────────────────────────
-    let keyring = KeyringProvider;
     let keyring_round_trip_ok =
         match keyring.set_credentials(&project_name, Some(&pat), Some(&key_hex)) {
             Ok(()) => {

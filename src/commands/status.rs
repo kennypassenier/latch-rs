@@ -104,7 +104,7 @@ pub async fn run(env: &str) -> Result<()> {
     if any_out_of_sync {
         println!("Some files are out of sync.");
         println!("  Run 'latch save  --env {}' to push local changes.", env);
-        println!("  Run 'latch export --env {}' to pull remote changes.", env);
+        println!("  Run 'latch load --env {}' to pull remote changes.", env);
     } else {
         println!("All files are in sync.");
     }

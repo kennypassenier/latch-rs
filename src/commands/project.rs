@@ -7,11 +7,18 @@ use crate::config::{
     global::{GlobalConfig, ProjectEntry},
     project::ProjectConfig,
 };
-use crate::credentials::{CredentialProvider, FallbackChain, keyring_provider::KeyringProvider};
+use crate::credentials::{
+    CredentialProvider, FallbackChain, get_global_pat, get_global_secrets_repo,
+    keyring_provider::KeyringProvider,
+};
 use crate::github::{RemoteStorage as _, client::GitHubClient};
 use crate::manifest::Manifest;
 
 fn resolve_repo_from_global(global: &GlobalConfig) -> Option<String> {
+    if let Some(repo) = get_global_secrets_repo() {
+        return Some(repo);
+    }
+
     let repos = global
         .projects
         .iter()
@@ -26,6 +33,10 @@ fn resolve_repo_from_global(global: &GlobalConfig) -> Option<String> {
 }
 
 fn resolve_pat(global: &GlobalConfig) -> Result<String> {
+    if let Some(v) = get_global_pat() {
+        return Ok(v);
+    }
+
     if let Ok(v) = env::var("LATCH_PAT") {
         if !v.trim().is_empty() {
             return Ok(v);
@@ -71,30 +82,7 @@ fn choose_repo(global: &GlobalConfig, explicit_repo: Option<&str>) -> Result<Str
         return Ok(r);
     }
 
-    let repos = global
-        .projects
-        .iter()
-        .map(|p| p.secrets_repo.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    if repos.is_empty() {
-        let typed: String = Input::new()
-            .with_prompt("Secrets repo (owner/repo)")
-            .interact_text()?;
-        if !typed.contains('/') {
-            bail!("Secrets repo must be in 'owner/repo' format.");
-        }
-        return Ok(typed);
-    }
-
-    let idx = Select::new()
-        .with_prompt("Choose secrets repo")
-        .items(&repos)
-        .default(0)
-        .interact()?;
-    Ok(repos[idx].clone())
+    bail!("No default secrets repo configured. Run 'latch login' first, or pass --repo owner/repo.")
 }
 
 pub async fn list(repo: Option<&str>) -> Result<()> {
@@ -222,7 +210,7 @@ pub async fn use_in_current_dir(repo: Option<&str>, env_override: Option<&str>) 
     );
 
     let do_export = Confirm::new()
-        .with_prompt("Run export now?")
+        .with_prompt("Run load now?")
         .default(true)
         .interact()?;
     if do_export {
@@ -230,4 +218,8 @@ pub async fn use_in_current_dir(repo: Option<&str>, env_override: Option<&str>) 
     }
 
     Ok(())
+}
+
+pub async fn run(repo: Option<&str>, env_override: Option<&str>) -> Result<()> {
+    use_in_current_dir(repo, env_override).await
 }

@@ -27,6 +27,25 @@ use crate::config::global::GlobalConfig;
 use env_provider::EnvVarProvider;
 use keyring_provider::KeyringProvider;
 
+pub const GLOBAL_PAT_SLOT: &str = "github.pat";
+pub const GLOBAL_SECRETS_REPO_SLOT: &str = "github.secrets_repo";
+
+pub fn get_global_pat() -> Option<String> {
+    KeyringProvider::get_raw(GLOBAL_PAT_SLOT)
+}
+
+pub fn set_global_pat(pat: &str) -> Result<()> {
+    KeyringProvider::set_raw(GLOBAL_PAT_SLOT, pat)
+}
+
+pub fn get_global_secrets_repo() -> Option<String> {
+    KeyringProvider::get_raw(GLOBAL_SECRETS_REPO_SLOT)
+}
+
+pub fn set_global_secrets_repo(repo: &str) -> Result<()> {
+    KeyringProvider::set_raw(GLOBAL_SECRETS_REPO_SLOT, repo)
+}
+
 /// Try providers in order: OS keyring → env vars → `~/.latch/config.toml`.
 /// Returns the first non-`None` value for each credential.
 pub struct FallbackChain {
@@ -101,6 +120,9 @@ impl FallbackChain {
         let keyring = KeyringProvider;
         let env = EnvVarProvider;
 
+        if let Some(p) = get_global_pat() {
+            return Ok(p);
+        }
         if let Some(p) = keyring.get_pat(&self.project) {
             return Ok(p);
         }

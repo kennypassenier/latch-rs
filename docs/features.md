@@ -2,7 +2,7 @@
 
 ## 1. Core Configuration & CLI Scaffolding
 * [x] **1.1. CLI Entry Point & Subcommands**
-  * **Task:** Setup `clap` with `init`, `save`, and `export` subcommands. Add global flags (e.g., `--verbose`, `--env`).
+  * **Task:** Setup `clap` with `login`, `init`, `project`, `save`, and `load` subcommands. Add global flags (e.g., `--verbose`, `--env`).
   * **Test:** Run CLI with `--help` and verify subcommands. Unit test argument parsing for correct struct generation.
 * [x] **1.2. Global Config Loader (`~/.latch/config.toml`)**
   * **Task:** Create `GlobalConfig` struct. Write functions to ensure the `~/.latch/` directory exists and load/save the TOML.
@@ -68,14 +68,14 @@
 * [x] **6.3. The `latch save --env=dev` Command**
   * **Task:** Chain: Discovery -> Example Generation -> Encryption -> Manifest Update -> GitHub Push.
   * **Test:** Integration test using temp directory + `MockKeyringProvider` + `MockRemoteStorage`. Assert the mock remote receives the encrypted files and updated manifest.
-* [x] **6.4. The `latch export --env=dev` Command**
+* [x] **6.4. The `latch load --env=dev` Command**
   * **Task:** Chain: Fetch Manifest -> Pull Encrypted files -> Decrypt -> Recreate local directories -> Write `.env` files.
-  * **Test:** Seed `MockRemoteStorage` with encrypted files. Run export. Assert the `.env` files appear in the correct local temp directories with correct decrypted content.
+  * **Test:** Seed `MockRemoteStorage` with encrypted files. Run load. Assert the `.env` files appear in the correct local temp directories with correct decrypted content.
 
 ## 7. UX & Polish
 * [x] **7.1. Overwrite Protection (Diffing)**
-  * **Task:** Before `export` overwrites a local `.env`, check if the local file differs from what we are about to write.
-  * **Test:** Place a modified `.env` in the temp dir. Run export, assert it errors or prompts for override.
+  * **Task:** Before `load` overwrites a local `.env`, check if the local file differs from what we are about to write.
+  * **Test:** Place a modified `.env` in the temp dir. Run load, assert it errors or prompts for override.
 * [x] **7.2. Progress Bars & Logging**
   * **Task:** Integrate `indicatif` for progress bars during GitHub uploads/downloads. Use `tracing` for debug logs.
   * **Test:** Visual manual verification. (Unit testing progress bars is notoriously flaky, skip strict assertions here).

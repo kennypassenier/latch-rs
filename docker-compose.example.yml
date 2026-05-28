@@ -27,17 +27,17 @@ x-latch: &latch
   # no network needed — latch only calls api.github.com
 
 services:
-  # ── Export dev secrets ──────────────────────────────────────────────────────
-  # Usage: docker compose run --rm latch-export
-  latch-export:
+  # ── Load dev secrets ────────────────────────────────────────────────────────
+  # Usage: docker compose run --rm latch-load
+  latch-load:
     <<: *latch
-    command: [ "export", "--env", "dev" ]
+    command: [ "load", "--env", "dev" ]
 
-  # ── Export prod secrets ─────────────────────────────────────────────────────
-  # Usage: docker compose run --rm latch-export-prod
-  latch-export-prod:
+  # ── Load prod secrets ───────────────────────────────────────────────────────
+  # Usage: docker compose run --rm latch-load-prod
+  latch-load-prod:
     <<: *latch
-    command: [ "export", "--env", "prod" ]
+    command: [ "load", "--env", "prod" ]
 
   # ── Save dev secrets ────────────────────────────────────────────────────────
   # Usage: docker compose run --rm latch-save

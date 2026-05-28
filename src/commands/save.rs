@@ -158,7 +158,7 @@ pub async fn run(env: &str) -> Result<()> {
     println!("✓ Manifest updated.");
 
     println!(
-        "\nAll done! Export on another machine with: latch export --env {}",
+        "\nAll done! Load on another machine with: latch load --env {}",
         env
     );
     Ok(())
