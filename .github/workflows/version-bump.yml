@@ -45,6 +45,3 @@ jobs:
           branch: chore/version-bump/${{ github.run_id }}
           base: main
           delete-branch: true
-          labels: |
-            automation
-            versioning
