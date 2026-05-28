@@ -1,48 +1,51 @@
-name: CI
+name: Pipeline
 
-on:
+'on':
   push:
-    branches: ["main"]
+    branches:
+      - main
   pull_request:
-    branches: ["main"]
+    branches:
+      - main
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"    # treat warnings as errors in CI
+  RUSTFLAGS: "-D warnings"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: write
+  pull-requests: read
+  packages: write
 
 jobs:
-  # ── Format check ─────────────────────────────────────────────────────────────
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install stable toolchain with rustfmt
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  # ── Lint ─────────────────────────────────────────────────────────────────────
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install stable toolchain with clippy
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -53,25 +56,20 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  # ── Tests ─────────────────────────────────────────────────────────────────────
   test:
     name: Test suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
-
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -82,27 +80,22 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
       - name: Run tests
         run: cargo test --locked
 
-  # ── MSRV check (minimum supported Rust version) ───────────────────────────────
   msrv:
     name: MSRV (Rust 1.86)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust 1.86
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86"
-
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -111,6 +104,183 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Check MSRV compiles
         run: cargo check --locked
+
+  version:
+    name: Version tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - fmt
+      - clippy
+      - test
+      - msrv
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      tag: ${{ steps.compute.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compute next version
+        id: compute
+        shell: bash
+        run: |
+          cargo_version=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          latest_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          latest_version=${latest_tag#v}
+
+          if [[ -z "$latest_tag" ]]; then
+            next_version="$cargo_version"
+          else
+            highest=$(printf '%s\n%s\n' "$cargo_version" "$latest_version" | sort -V | tail -n1)
+            if [[ "$highest" == "$cargo_version" && "$cargo_version" != "$latest_version" ]]; then
+              next_version="$cargo_version"
+            else
+              IFS='.' read -r major minor patch <<< "$latest_version"
+              next_version="$major.$minor.$((patch + 1))"
+            fi
+          fi
+
+          echo "version=$next_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$next_version" >> "$GITHUB_OUTPUT"
+      - name: Create and push tag
+        shell: bash
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.compute.outputs.tag }}" >/dev/null; then
+            echo "Tag already exists: ${{ steps.compute.outputs.tag }}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.compute.outputs.tag }}" -m "release ${{ steps.compute.outputs.tag }}"
+          git push origin "${{ steps.compute.outputs.tag }}"
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: latch-linux-x86_64.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            archive: latch-linux-aarch64.tar.gz
+            cross: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: latch-macos-x86_64.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: latch-macos-aarch64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: latch-windows-x86_64.zip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install Linux build deps
+        if: runner.os == 'Linux' && !matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Build release binary (native)
+        if: "!matrix.cross"
+        run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cargo build --release --locked --target ${{ matrix.target }}
+      - name: Build release binary (cross)
+        if: matrix.cross
+        run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cross build --release --locked --target ${{ matrix.target }}
+      - name: Package (Unix tar.gz)
+        if: runner.os != 'Windows'
+        run: |
+          BIN=target/${{ matrix.target }}/release/latch
+          tar -czf ${{ matrix.archive }} -C $(dirname $BIN) $(basename $BIN)
+      - name: Package (Windows zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "target\${{ matrix.target }}\release\latch.exe"
+          Compress-Archive -Path $bin -DestinationPath ${{ matrix.archive }}
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  github-release:
+    name: GitHub Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - version
+      - build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          files: artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    name: Docker image build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - version
+      - build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main
+            type=raw,value=v${{ needs.version.outputs.version }}
+            type=raw,value=v${{ needs.version.outputs.version }}.${{ github.run_number }}
+            type=sha,prefix=sha-,format=short
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            LATCH_BUILD_VERSION=${{ needs.version.outputs.version }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

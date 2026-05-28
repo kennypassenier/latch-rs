@@ -62,14 +62,14 @@ latch --help
 
 ## Release process
 
-Latch uses `Cargo.toml` as the manual major/minor version source and Git tags as the release trigger.
+Latch uses a single GitHub Actions workflow (`.github/workflows/ci.yml`) for CI, automatic version tagging, release binaries, and Docker image publishing.
 
 ### Automatic patch releases
 
 Every push to `main` creates the next patch tag automatically:
 
 1. If `Cargo.toml` is still at the latest released major/minor version, Latch creates the next patch tag.
-2. That tag triggers a GitHub Release with binaries and a GHCR Docker image.
+2. The same pipeline creates the tag, then publishes a GitHub Release (binaries) and pushes a GHCR Docker image.
 
 Example:
 
@@ -101,10 +101,10 @@ Example:
 
 ### Release artifacts
 
-Each release tag publishes:
+Each push to `main` publishes:
 
 1. Linux, macOS, and Windows binaries on the GitHub Release page
-2. Multi-arch Docker images to `ghcr.io/kennypassenier/latch-rs`
+2. Multi-arch Docker images to `ghcr.io/kennypassenier/latch-rs` (tags: `main`, `vX.Y.Z`, `vX.Y.Z.<run>`, `sha-<short>`)
 3. Binary version metadata that matches the release tag
 
 ---
@@ -592,5 +592,3 @@ You have not exported the secrets locally yet. Run `latch export`.
 ### `latch run` exits with code 127 (command not found)
 
 The program you specified is not in `$PATH`. Use the full path, or ensure the binary is installed.
-
-.
