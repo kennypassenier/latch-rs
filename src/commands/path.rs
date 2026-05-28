@@ -10,7 +10,9 @@ use anyhow::bail;
 #[cfg(target_os = "windows")]
 use std::process::Command;
 
+#[cfg(any(not(target_os = "windows"), test))]
 const PATH_BLOCK_START: &str = "# >>> latch path >>>";
+#[cfg(any(not(target_os = "windows"), test))]
 const PATH_BLOCK_END: &str = "# <<< latch path <<<";
 
 pub async fn add() -> Result<()> {
@@ -196,6 +198,7 @@ fn remove_managed_block_from_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn upsert_managed_block(existing: &str, block: &str) -> String {
     let trimmed = remove_managed_block(existing).trim_end().to_string();
     if trimmed.is_empty() {
@@ -205,6 +208,7 @@ fn upsert_managed_block(existing: &str, block: &str) -> String {
     }
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn remove_managed_block(existing: &str) -> String {
     if let Some(start) = existing.find(PATH_BLOCK_START) {
         if let Some(rel_end) = existing[start..].find(PATH_BLOCK_END) {

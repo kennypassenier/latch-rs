@@ -169,13 +169,6 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: latch-linux-x86_64.tar.gz
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            archive: latch-linux-aarch64.tar.gz
-            cross: true
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive: latch-windows-x86_64.zip
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust stable
@@ -183,37 +176,16 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Install Linux build deps
-        if: runner.os == 'Linux' && !matrix.cross
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-      - name: Install cross
-        if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-      - name: Build release binary (native Unix)
-        if: runner.os != 'Windows' && !matrix.cross
+      - name: Build release binary
         shell: bash
         run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cargo build --release --locked --target ${{ matrix.target }}
-      - name: Build release binary (native Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $env:LATCH_BUILD_VERSION = "${{ needs.version.outputs.version }}"
-          cargo build --release --locked --target ${{ matrix.target }}
-      - name: Build release binary (cross)
-        if: matrix.cross
-        run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cross build --release --locked --target ${{ matrix.target }}
-      - name: Package (Unix tar.gz)
-        if: runner.os != 'Windows'
+      - name: Package artifact
         run: |
           BIN=target/${{ matrix.target }}/release/latch
           tar -czf ${{ matrix.archive }} -C $(dirname $BIN) $(basename $BIN)
-      - name: Package (Windows zip)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $bin = "target\${{ matrix.target }}\release\latch.exe"
-          Compress-Archive -Path $bin -DestinationPath ${{ matrix.archive }}
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
