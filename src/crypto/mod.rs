@@ -2,8 +2,8 @@ pub mod kdf;
 
 use anyhow::Result;
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit},
     XChaCha20Poly1305,
+    aead::{Aead, AeadCore, KeyInit},
 };
 use rand::rngs::OsRng;
 

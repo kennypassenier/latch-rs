@@ -1,6 +1,6 @@
-name: Release
+name: "Release"
 
-on:
+'on':
   push:
     tags:
       - "v*.*.*"   # e.g. v0.2.0, v1.0.0-rc1

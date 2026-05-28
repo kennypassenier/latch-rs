@@ -76,6 +76,10 @@ mod mock {
                 None
             })
         }
+        async fn delete_file(&self, path: &str, _message: &str) -> Result<()> {
+            self.files.lock().unwrap().remove(path);
+            Ok(())
+        }
         async fn list_files(&self, prefix: &str) -> Result<Vec<String>> {
             Ok(self
                 .files

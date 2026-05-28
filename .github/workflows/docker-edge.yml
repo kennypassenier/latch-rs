@@ -1,6 +1,6 @@
-name: Docker (edge)
+name: "Docker (edge)"
 
-on:
+'on':
   push:
     branches: ["main"]
 
@@ -13,10 +13,18 @@ permissions:
 
 jobs:
   docker-edge:
-    name: Push :edge to GHCR
+    name: Push beta image to GHCR
+    if: >-
+      startsWith(github.event.head_commit.message, 'chore(version) bump patch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -32,7 +40,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Tags pushed on every main commit:
-      #   ghcr.io/kennypassenier/latch-rs:edge
+      #   ghcr.io/kennypassenier/latch-rs:vX.Y.Z-beta
+      #   ghcr.io/kennypassenier/latch-rs:vX.Y.Z-beta.<run>
       #   ghcr.io/kennypassenier/latch-rs:sha-<short>
       - name: Docker metadata
         id: meta
@@ -40,7 +49,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=edge
+            type=raw,value=v${{ steps.version.outputs.version }}-beta
+            type=raw,value=v${{ steps.version.outputs.version }}-beta.${{ github.run_number }}
             type=sha,prefix=sha-,format=short
 
       - name: Build and push

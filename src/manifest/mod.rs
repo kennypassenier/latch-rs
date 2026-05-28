@@ -49,8 +49,7 @@ impl Manifest {
 
     /// Serialise to pretty-printed JSON bytes.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        let json =
-            serde_json::to_string_pretty(self).context("Serialising manifest")?;
+        let json = serde_json::to_string_pretty(self).context("Serialising manifest")?;
         Ok(json.into_bytes())
     }
 

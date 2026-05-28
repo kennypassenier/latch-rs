@@ -95,10 +95,25 @@ pub async fn run() -> Result<()> {
         _ => unreachable!(),
     };
 
-    // ── Persist to keyring ────────────────────────────────────────────────────
+    // ── Persist credentials ──────────────────────────────────────────────────
     let keyring = KeyringProvider;
-    keyring.set_credentials(&project_name, Some(&pat), Some(&key_hex))?;
-    println!("  Credentials saved to OS keyring.");
+    let keyring_round_trip_ok =
+        match keyring.set_credentials(&project_name, Some(&pat), Some(&key_hex)) {
+            Ok(()) => {
+                let pat_ok = keyring.get_pat(&project_name).as_deref() == Some(pat.as_str());
+                let key_ok = keyring.get_key(&project_name).as_deref() == Some(key_hex.as_str());
+                pat_ok && key_ok
+            }
+            Err(_) => false,
+        };
+
+    if keyring_round_trip_ok {
+        println!("  Credentials saved to OS keyring.");
+    } else {
+        println!(
+            "  OS keyring is unavailable or unreadable in this session; storing fallback credentials in ~/.latch/config.toml."
+        );
+    }
 
     // ── Write .latch/config.toml in CWD ──────────────────────────────────────
     let cwd = env::current_dir()?;
@@ -116,8 +131,8 @@ pub async fn run() -> Result<()> {
         name: project_name.clone(),
         secrets_repo: secrets_repo.clone(),
         default_env: default_env.clone(),
-        key_hex: None, // Don't persist key in plaintext config by default
-        github_pat: None,
+        key_hex: (!keyring_round_trip_ok).then_some(key_hex.clone()),
+        github_pat: (!keyring_round_trip_ok).then_some(pat.clone()),
     });
     global.save()?;
     println!("  Updated ~/.latch/config.toml");

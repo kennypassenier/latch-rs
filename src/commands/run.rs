@@ -6,7 +6,7 @@ use crate::{
     credentials::FallbackChain,
     crypto::{decrypt, parse_key},
     discovery::{expand_env_vars, flatten_path, remote_path},
-    github::{client::GitHubClient, RemoteStorage as _},
+    github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
 
@@ -28,9 +28,10 @@ pub async fn run(env_name: &str, program: &str, args: &[String]) -> Result<()> {
     let github = GitHubClient::new(&cfg.secrets_repo, &pat)?;
 
     let manifest_path = Manifest::remote_path(&cfg.name);
-    let manifest_bytes = github.pull_file(&manifest_path).await.map_err(|_| {
-        anyhow::anyhow!("manifest.json not found. Run 'latch init' first.")
-    })?;
+    let manifest_bytes = github
+        .pull_file(&manifest_path)
+        .await
+        .map_err(|_| anyhow::anyhow!("manifest.json not found. Run 'latch init' first."))?;
     let manifest = Manifest::from_bytes(&manifest_bytes)?;
 
     let mappings = manifest.get_env(env_name);
@@ -57,7 +58,9 @@ pub async fn run(env_name: &str, program: &str, args: &[String]) -> Result<()> {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
             if let Some(eq) = line.find('=') {
                 let k = line[..eq].trim().to_string();
                 let raw_v = line[eq + 1..].to_string();
@@ -69,7 +72,11 @@ pub async fn run(env_name: &str, program: &str, args: &[String]) -> Result<()> {
         }
     }
 
-    tracing::debug!("Injecting {} env var(s) for env '{}'", resolved.len(), env_name);
+    tracing::debug!(
+        "Injecting {} env var(s) for env '{}'",
+        resolved.len(),
+        env_name
+    );
 
     let _ = project_root; // only needed for context
     let mut cmd = Command::new(program);
@@ -78,6 +85,8 @@ pub async fn run(env_name: &str, program: &str, args: &[String]) -> Result<()> {
 
     let status = cmd.status()?;
     let code = status.code().unwrap_or(1);
-    if code != 0 { std::process::exit(code); }
+    if code != 0 {
+        std::process::exit(code);
+    }
     Ok(())
 }
