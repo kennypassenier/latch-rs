@@ -173,12 +173,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
             archive: latch-linux-aarch64.tar.gz
             cross: true
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            archive: latch-macos-x86_64.tar.gz
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            archive: latch-macos-aarch64.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive: latch-windows-x86_64.zip
@@ -196,9 +190,16 @@ jobs:
       - name: Install cross
         if: matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
-      - name: Build release binary (native)
-        if: "!matrix.cross"
+      - name: Build release binary (native Unix)
+        if: runner.os != 'Windows' && !matrix.cross
+        shell: bash
         run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cargo build --release --locked --target ${{ matrix.target }}
+      - name: Build release binary (native Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:LATCH_BUILD_VERSION = "${{ needs.version.outputs.version }}"
+          cargo build --release --locked --target ${{ matrix.target }}
       - name: Build release binary (cross)
         if: matrix.cross
         run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cross build --release --locked --target ${{ matrix.target }}
