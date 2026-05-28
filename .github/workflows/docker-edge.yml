@@ -1,6 +1,6 @@
-name: Docker (edge)
+name: "Docker (edge)"
 
-on:
+'on':
   push:
     branches: ["main"]
 
@@ -14,7 +14,8 @@ permissions:
 jobs:
   docker-edge:
     name: Push beta image to GHCR
-    if: startsWith(github.event.head_commit.message, 'chore(version): bump patch')
+    if: >-
+      startsWith(github.event.head_commit.message, 'chore(version) bump patch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

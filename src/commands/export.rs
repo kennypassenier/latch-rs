@@ -8,7 +8,7 @@ use crate::{
     credentials::FallbackChain,
     crypto::{decrypt, parse_key},
     discovery::{flatten_path, remote_path},
-    github::{client::GitHubClient, RemoteStorage as _},
+    github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
 
@@ -132,9 +132,6 @@ pub async fn run(env: &str, dry_run: bool) -> Result<()> {
     }
 
     pb.finish_with_message("✓ Export complete");
-    println!(
-        "\nExported {} file(s), skipped {}.",
-        written, skipped
-    );
+    println!("\nExported {} file(s), skipped {}.", written, skipped);
     Ok(())
 }

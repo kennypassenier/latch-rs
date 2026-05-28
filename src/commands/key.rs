@@ -3,9 +3,16 @@ use dialoguer::{Input, Password, Select};
 use std::env;
 
 use crate::{
-    config::project::ProjectConfig,
-    credentials::{keyring_provider::KeyringProvider, FallbackChain},
-    crypto::{generate_key_hex, parse_key, kdf::{decode_salt, derive_key, generate_salt_b64}},
+    config::{
+        global::{GlobalConfig, ProjectEntry},
+        project::ProjectConfig,
+    },
+    credentials::{FallbackChain, keyring_provider::KeyringProvider},
+    crypto::{
+        generate_key_hex,
+        kdf::{decode_salt, derive_key, generate_salt_b64},
+        parse_key,
+    },
 };
 
 /// `latch key [--env <env>]`
@@ -20,7 +27,10 @@ pub async fn run(env_name: Option<&str>) -> Result<()> {
         Some(e) => format!("env '{}'", e),
         None => "project default (all envs)".to_string(),
     };
-    println!("Setting encryption key for project '{}' / {}\n", cfg.name, scope);
+    println!(
+        "Setting encryption key for project '{}' / {}\n",
+        cfg.name, scope
+    );
 
     let choices = &[
         "Generate random key (recommended)",
@@ -48,7 +58,10 @@ pub async fn run(env_name: Option<&str>) -> Result<()> {
             let salt = decode_salt(&salt_b64)?;
             let key = derive_key(&passphrase, &salt)?;
             let hex = hex::encode(key);
-            println!("\n  KDF salt (share this with team members): {}\n", salt_b64);
+            println!(
+                "\n  KDF salt (share this with team members): {}\n",
+                salt_b64
+            );
             println!("  Derived key (stored in keyring):\n  {}\n", hex);
             hex
         }
@@ -69,8 +82,35 @@ pub async fn run(env_name: Option<&str>) -> Result<()> {
             println!("  Slot: '{}.key.{}'", cfg.name, env);
         }
         None => {
-            KeyringProvider::set_raw(&format!("{}.key", cfg.name), &key_hex)?;
-            println!("  Default project key saved to OS keyring.");
+            let slot = format!("{}.key", cfg.name);
+            let keyring_round_trip_ok = match KeyringProvider::set_raw(&slot, &key_hex) {
+                Ok(()) => KeyringProvider::get_raw(&slot).as_deref() == Some(key_hex.as_str()),
+                Err(_) => false,
+            };
+
+            if keyring_round_trip_ok {
+                println!("  Default project key saved to OS keyring.");
+            } else {
+                let mut global = GlobalConfig::load()?;
+                let existing = global
+                    .get_project(&cfg.name)
+                    .cloned()
+                    .unwrap_or(ProjectEntry {
+                        name: cfg.name.clone(),
+                        secrets_repo: cfg.secrets_repo.clone(),
+                        default_env: cfg.default_env.clone(),
+                        key_hex: None,
+                        github_pat: None,
+                    });
+                global.upsert_project(ProjectEntry {
+                    key_hex: Some(key_hex.clone()),
+                    ..existing
+                });
+                global.save()?;
+                println!(
+                    "  OS keyring is unavailable or unreadable in this session; saved the default project key to ~/.latch/config.toml instead."
+                );
+            }
         }
     }
 

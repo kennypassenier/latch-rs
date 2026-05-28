@@ -7,14 +7,19 @@ use std::path::{Path, PathBuf};
 /// Recursively scan `root` for `.env` files (and `.env.*` variants such as
 /// `.env.local`, `.env.production`).
 ///
-/// The walk honours `.gitignore` files found along the way **and** a custom
-/// `.latchignore` file (same format as `.gitignore`).  Any directory named
+/// The walk honours a custom `.latchignore` file (same format as `.gitignore`).
+/// `.gitignore` is intentionally ignored so local secret files like `.env`
+/// remain discoverable even when ignored by Git.
+/// Any directory named
 /// `.latch` is always skipped to avoid re-encrypting config artefacts.
 pub fn scan_env_files(root: &Path) -> Vec<PathBuf> {
     let mut results = Vec::new();
 
     let walker = WalkBuilder::new(root)
         .add_custom_ignore_filename(".latchignore")
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
         // Dotfiles (e.g. .env) must NOT be skipped; the ignore crate hides
         // them by default.
         .hidden(false)
@@ -39,7 +44,16 @@ pub fn scan_env_files(root: &Path) -> Vec<PathBuf> {
 
 /// Returns `true` for `.env`, `.env.local`, `.env.production`, etc.
 fn is_env_filename(name: &str) -> bool {
-    name == ".env" || name.starts_with(".env.")
+    if name == ".env" {
+        return true;
+    }
+
+    // Track .env variants, but never treat template/example files as secrets.
+    if name.starts_with(".env.") {
+        return !name.ends_with(".example") && !name.ends_with(".sample");
+    }
+
+    false
 }
 
 // ── Path flattening ───────────────────────────────────────────────────────────
@@ -214,6 +228,7 @@ pub fn expand_env_file(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn flatten_simple() {
@@ -231,6 +246,33 @@ mod tests {
             flatten_path(Path::new("frontend/.env.local")),
             "frontend.env.local"
         );
+    }
+
+    #[test]
+    fn ignore_example_and_sample_templates() {
+        assert!(is_env_filename(".env"));
+        assert!(is_env_filename(".env.prod"));
+        assert!(!is_env_filename(".env.example"));
+        assert!(!is_env_filename(".env.sample"));
+    }
+
+    #[test]
+    fn scan_includes_gitignored_env_files() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+
+        std::fs::write(root.join(".gitignore"), ".env\n.env.dev\n").expect("write .gitignore");
+        std::fs::write(root.join(".env"), "A=1\n").expect("write .env");
+        std::fs::write(root.join(".env.dev"), "A=2\n").expect("write .env.dev");
+        std::fs::write(root.join(".env.example"), "A=\n").expect("write .env.example");
+
+        let mut files = scan_env_files(root)
+            .into_iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        files.sort();
+
+        assert_eq!(files, vec![".env".to_string(), ".env.dev".to_string()]);
     }
 
     #[test]

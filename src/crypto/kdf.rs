@@ -5,8 +5,8 @@ use argon2::{Algorithm, Argon2, Params, Version};
 ///
 /// Parameters: m=65536 KiB, t=3 iterations, p=4 threads (OWASP recommended).
 pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
-    let params = Params::new(65_536, 3, 4, Some(32))
-        .map_err(|e| anyhow::anyhow!("Argon2 params: {}", e))?;
+    let params =
+        Params::new(65_536, 3, 4, Some(32)).map_err(|e| anyhow::anyhow!("Argon2 params: {}", e))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut key = [0u8; 32];
     argon2
@@ -18,9 +18,9 @@ pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
 /// Generate a random 16-byte Argon2 salt, returned as a base64 string
 /// suitable for embedding in configuration files.
 pub fn generate_salt_b64() -> String {
+    use base64::Engine;
     use rand::RngCore;
     use rand::rngs::OsRng;
-    use base64::Engine;
     let mut salt = [0u8; 16];
     OsRng.fill_bytes(&mut salt);
     base64::engine::general_purpose::STANDARD.encode(salt)

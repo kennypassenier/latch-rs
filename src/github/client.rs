@@ -1,5 +1,5 @@
 use super::RemoteStorage;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use base64::Engine;
 use reqwest::{Client, StatusCode};
@@ -38,9 +38,15 @@ struct TreeResponse {
 #[derive(Serialize)]
 struct PutBody<'a> {
     message: &'a str,
-    content: String,          // base64-encoded
+    content: String, // base64-encoded
     #[serde(skip_serializing_if = "Option::is_none")]
-    sha: Option<&'a str>,     // required when updating an existing file
+    sha: Option<&'a str>, // required when updating an existing file
+}
+
+#[derive(Serialize)]
+struct DeleteBody<'a> {
+    message: &'a str,
+    sha: &'a str,
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -59,9 +65,9 @@ pub struct GitHubClient {
 impl GitHubClient {
     /// `secrets_repo` should be in `"owner/repo"` format.
     pub fn new(secrets_repo: &str, pat: &str) -> Result<Self> {
-        let (owner, repo) = secrets_repo
-            .split_once('/')
-            .ok_or_else(|| anyhow::anyhow!("secrets_repo must be 'owner/repo', got '{}'", secrets_repo))?;
+        let (owner, repo) = secrets_repo.split_once('/').ok_or_else(|| {
+            anyhow::anyhow!("secrets_repo must be 'owner/repo', got '{}'", secrets_repo)
+        })?;
 
         let client = Client::builder()
             .user_agent(concat!("latch-rs/", env!("CARGO_PKG_VERSION")))
@@ -149,9 +155,12 @@ impl RemoteStorage for GitHubClient {
             bail!("GitHub GET {} returned {}: {}", path, status, text);
         }
 
-        let body: ContentsResponse = resp.json().await.context("Parsing GitHub contents response")?;
+        let body: ContentsResponse = resp
+            .json()
+            .await
+            .context("Parsing GitHub contents response")?;
         // GitHub base64 content includes newlines every 60 chars – strip them.
-        let clean = body.content.replace('\n', "").replace('\r', "");
+        let clean = body.content.replace(['\n', '\r'], "");
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&clean)
             .context("Decoding base64 content from GitHub")?;
@@ -179,8 +188,39 @@ impl RemoteStorage for GitHubClient {
             bail!("GitHub GET {} returned {}: {}", path, status, text);
         }
 
-        let body: ContentsResponse = resp.json().await.context("Parsing GitHub contents for SHA")?;
+        let body: ContentsResponse = resp
+            .json()
+            .await
+            .context("Parsing GitHub contents for SHA")?;
         Ok(Some(body.sha))
+    }
+
+    async fn delete_file(&self, path: &str, message: &str) -> Result<()> {
+        let Some(sha) = self.get_sha(path).await? else {
+            return Ok(());
+        };
+
+        let body = DeleteBody { message, sha: &sha };
+
+        debug!("DELETE {}", path);
+        let resp = self
+            .client
+            .delete(self.contents_url(path))
+            .header("Authorization", self.auth_header())
+            .header("Accept", ACCEPT_HEADER)
+            .header("X-GitHub-Api-Version", API_VERSION_HEADER)
+            .json(&body)
+            .send()
+            .await
+            .context("GitHub DELETE request failed")?;
+
+        let status = resp.status();
+        if status == StatusCode::OK || status == StatusCode::NOT_FOUND {
+            Ok(())
+        } else {
+            let text = resp.text().await.unwrap_or_default();
+            bail!("GitHub DELETE {} returned {}: {}", path, status, text);
+        }
     }
 
     async fn list_files(&self, prefix: &str) -> Result<Vec<String>> {

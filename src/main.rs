@@ -77,6 +77,22 @@ enum Commands {
         #[arg(long, short)]
         env: Option<String>,
     },
+
+    /// Manage shell PATH integration for the current Latch binary.
+    Path {
+        #[command(subcommand)]
+        action: PathCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum PathCommands {
+    /// Install the current Latch binary into a user PATH location.
+    Add,
+    /// Remove the user-level PATH installation added by Latch.
+    Remove,
+    /// Show PATH installation status for the current machine.
+    Status,
 }
 
 #[tokio::main]
@@ -106,8 +122,13 @@ async fn main() -> anyhow::Result<()> {
                     "No command specified. Usage: latch run --env <env> -- <program> [args…]"
                 );
             }
-            commands::run::run(&env, &command[0], &command[1..].to_vec()).await
+            commands::run::run(&env, &command[0], &command[1..]).await
         }
         Commands::Key { env } => commands::key::run(env.as_deref()).await,
+        Commands::Path { action } => match action {
+            PathCommands::Add => commands::path::add().await,
+            PathCommands::Remove => commands::path::remove().await,
+            PathCommands::Status => commands::path::status().await,
+        },
     }
 }

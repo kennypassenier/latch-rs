@@ -10,12 +10,7 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait RemoteStorage: Send + Sync {
     /// Upload (create or overwrite) a file at `path`.
-    async fn push_file(
-        &self,
-        path: &str,
-        content: &[u8],
-        message: &str,
-    ) -> Result<()>;
+    async fn push_file(&self, path: &str, content: &[u8], message: &str) -> Result<()>;
 
     /// Download the raw bytes of a file at `path`.
     async fn pull_file(&self, path: &str) -> Result<Vec<u8>>;
@@ -23,6 +18,9 @@ pub trait RemoteStorage: Send + Sync {
     /// Return the current blob SHA of `path`, or `None` if it doesn't exist.
     /// The SHA is required when updating an existing file via the GitHub API.
     async fn get_sha(&self, path: &str) -> Result<Option<String>>;
+
+    /// Delete a file at `path` if it exists.
+    async fn delete_file(&self, path: &str, message: &str) -> Result<()>;
 
     /// List all paths under a given prefix (used when removing stale entries).
     #[allow(dead_code)]

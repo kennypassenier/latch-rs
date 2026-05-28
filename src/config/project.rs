@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -41,9 +41,9 @@ impl ProjectConfig {
             }
             match dir.parent() {
                 Some(parent) => dir = parent.to_path_buf(),
-                None => bail!(
-                    "No .latch/config.toml found. Run 'latch init' in your project root."
-                ),
+                None => {
+                    bail!("No .latch/config.toml found. Run 'latch init' in your project root.")
+                }
             }
         }
     }

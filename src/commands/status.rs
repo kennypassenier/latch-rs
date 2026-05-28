@@ -6,7 +6,7 @@ use crate::{
     credentials::FallbackChain,
     crypto::{decrypt, parse_key},
     discovery::{flatten_path, remote_path},
-    github::{client::GitHubClient, RemoteStorage as _},
+    github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
 
@@ -36,9 +36,10 @@ pub async fn run(env: &str) -> Result<()> {
 
     // ── Fetch manifest ────────────────────────────────────────────────────────
     let manifest_path = Manifest::remote_path(&cfg.name);
-    let manifest_bytes = github.pull_file(&manifest_path).await.map_err(|_| {
-        anyhow::anyhow!("manifest.json not found. Run 'latch init' first.")
-    })?;
+    let manifest_bytes = github
+        .pull_file(&manifest_path)
+        .await
+        .map_err(|_| anyhow::anyhow!("manifest.json not found. Run 'latch init' first."))?;
     let manifest = Manifest::from_bytes(&manifest_bytes)?;
 
     let mappings = manifest.get_env(env);
@@ -50,10 +51,7 @@ pub async fn run(env: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "Status for project '{}' / env '{}'\n",
-        cfg.name, env
-    );
+    println!("Status for project '{}' / env '{}'\n", cfg.name, env);
 
     let mut any_out_of_sync = false;
 
@@ -84,9 +82,9 @@ pub async fn run(env: &str) -> Result<()> {
         };
 
         let (icon, label) = match &status {
-            FileStatus::InSync   => ("✓", "in sync "),
+            FileStatus::InSync => ("✓", "in sync "),
             FileStatus::Modified => ("~", "modified"),
-            FileStatus::Missing  => ("!", "missing "),
+            FileStatus::Missing => ("!", "missing "),
             FileStatus::Error(_) => ("✗", "error   "),
         };
 

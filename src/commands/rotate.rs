@@ -5,10 +5,10 @@ use std::env;
 
 use crate::{
     config::project::ProjectConfig,
-    credentials::{keyring_provider::KeyringProvider, CredentialProvider, FallbackChain},
+    credentials::{CredentialProvider, FallbackChain, keyring_provider::KeyringProvider},
     crypto::{decrypt, encrypt, generate_key_hex, parse_key},
     discovery::{flatten_path, remote_path},
-    github::{client::GitHubClient, RemoteStorage as _},
+    github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
 
@@ -35,7 +35,10 @@ pub async fn run() -> Result<()> {
     }
 
     // ── New key ───────────────────────────────────────────────────────────────
-    let new_key_choices = &["Generate random key (recommended)", "Enter new key manually"];
+    let new_key_choices = &[
+        "Generate random key (recommended)",
+        "Enter new key manually",
+    ];
     let choice = dialoguer::Select::new()
         .with_prompt("New key source")
         .items(new_key_choices)
@@ -57,9 +60,10 @@ pub async fn run() -> Result<()> {
 
     // ── Fetch manifest ────────────────────────────────────────────────────────
     let manifest_path = Manifest::remote_path(&cfg.name);
-    let manifest_bytes = github.pull_file(&manifest_path).await.map_err(|_| {
-        anyhow::anyhow!("manifest.json not found. Run 'latch init' first.")
-    })?;
+    let manifest_bytes = github
+        .pull_file(&manifest_path)
+        .await
+        .map_err(|_| anyhow::anyhow!("manifest.json not found. Run 'latch init' first."))?;
     let manifest = Manifest::from_bytes(&manifest_bytes)?;
 
     // Collect every encrypted file across all envs
@@ -76,10 +80,7 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "\nRe-encrypting {} file(s)…",
-        all_remote_paths.len()
-    );
+    println!("\nRe-encrypting {} file(s)…", all_remote_paths.len());
 
     let pb = ProgressBar::new(all_remote_paths.len() as u64);
     pb.set_style(
@@ -112,10 +113,7 @@ pub async fn run() -> Result<()> {
     let keyring = KeyringProvider;
     keyring.set_credentials(&cfg.name, None, Some(&new_key_hex))?;
     println!("\n  New key saved to OS keyring.");
-    println!(
-        "\n  New key (store this safely!):\n  {}\n",
-        new_key_hex
-    );
+    println!("\n  New key (store this safely!):\n  {}\n", new_key_hex);
     println!(
         "⚠  All team members must update their local keyring with the new key\n   \
          before running 'latch export'."

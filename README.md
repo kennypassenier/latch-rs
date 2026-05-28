@@ -20,6 +20,7 @@ Latch keeps your team's secrets out of application repositories by encrypting ev
   - [latch rotate](#latch-rotate)
   - [latch run](#latch-run)
   - [latch key](#latch-key)
+  - [latch path](#latch-path)
 - [Credential resolution](#credential-resolution)
 - [Environment variables](#environment-variables)
 - [Configuration files](#configuration-files)
@@ -33,7 +34,7 @@ Latch keeps your team's secrets out of application repositories by encrypting ev
 
 | Requirement | Notes |
 |---|---|
-| Rust 1.85+ | `rustup update stable` |
+| Rust 1.86+ | `rustup update stable` |
 | A private GitHub repository | Used exclusively to store encrypted secrets. Never put source code here. |
 | A GitHub Personal Access Token (PAT) | Needs `Contents: read/write` permission on the secrets repository. [Create one here](https://github.com/settings/tokens). |
 | OS keyring | macOS Keychain, GNOME Keyring / KWallet on Linux, Windows Credential Manager. Optional but recommended. |
@@ -128,11 +129,12 @@ latch save [--env <env>]
 | `--env` / `-e` | `dev` | Environment label used as the remote path prefix. |
 
 **What it does:**
-1. Walks the project tree with the ignore rules from `.latchignore` (and `.gitignore`).
+1. Walks the project tree using `.latchignore` rules. `.gitignore` does not suppress `.env` discovery.
 2. Encrypts each discovered `.env` file with XChaCha20-Poly1305.
 3. Pushes each ciphertext to `<project>/<env>/<flat-name>.enc` in the secrets repository.
 4. Generates a `.env.example` next to each `.env` file (values stripped, keys and comments kept).
-5. Updates the remote manifest.
+5. Removes stale remote encrypted files that were previously tracked for the env but are no longer discovered.
+6. Updates the remote manifest.
 
 **Example:**
 
@@ -292,6 +294,39 @@ After setting env-specific keys, `latch save --env prod` encrypts with the prod 
 
 ---
 
+### latch path
+
+Install or remove the current Latch binary from your user PATH.
+
+```
+latch path <add|remove|status>
+```
+
+| Command | Description |
+|---|---|
+| `latch path add` | Copies the current binary into a user-level install directory and configures PATH. |
+| `latch path remove` | Removes the managed install and undoes the PATH integration block. |
+| `latch path status` | Shows the current binary path, install location, and PATH status. |
+
+**Platform behavior:**
+1. Linux/macOS installs to `~/.local/bin/latch` and manages a small PATH block in shell profile files.
+2. Windows installs to `%LOCALAPPDATA%\Programs\latch\latch.exe` and updates the user PATH.
+
+**Examples:**
+
+```bash
+# Install the current binary so `latch` works without `./`
+./latch path add
+
+# Check whether PATH is configured correctly
+latch path status
+
+# Remove the user-level PATH installation
+latch path remove
+```
+
+---
+
 ## Credential resolution
 
 For each project, Latch looks for the encryption key and GitHub PAT in this order:
@@ -393,6 +428,32 @@ Or — to avoid writing secrets to disk entirely:
   run: latch run --env dev -- cargo test
 ```
 
+### Keep `.env` ignored by Git but still tracked by Latch
+
+```gitignore
+# Git should ignore secrets
+.env
+.env.*
+```
+
+```text
+# .latchignore controls Latch scanning (not .gitignore)
+# You can still explicitly exclude paths from Latch here.
+tests/fixtures/
+```
+
+`latch save` will still discover and encrypt `.env` files even when they are gitignored.
+
+### Stop tracking a previously encrypted file
+
+If you add a path to `.latchignore`, then run:
+
+```bash
+latch save --env dev
+```
+
+Latch removes that file's ciphertext from the remote repo for `dev` and prunes it from `manifest.json`.
+
 ### Monorepo with multiple services
 
 Each service calls `latch init` with its own project name:
@@ -472,7 +533,7 @@ Set `LATCH_KEY` and `LATCH_PAT` as environment variables. Many CI platforms (Git
 
 ### `cargo check` / build errors
 
-Ensure your Rust toolchain is at least 1.85 (`rustup update stable`). Latch uses the 2024 edition.
+Ensure your Rust toolchain is at least 1.86 (`rustup update stable`). Latch uses the 2024 edition.
 
 ### `latch status` shows all files as `!` (missing)
 

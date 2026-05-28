@@ -1,6 +1,6 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-# Use the official Rust image pinned to the minimum required edition (2024 → 1.85).
-FROM rust:1.85-slim-bookworm AS builder
+# Use the official Rust image pinned to the minimum supported version.
+FROM rust:1.86-slim-bookworm AS builder
 
 WORKDIR /build
 

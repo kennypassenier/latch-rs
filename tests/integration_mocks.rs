@@ -65,6 +65,11 @@ impl RemoteStorage for MockStorage {
         }
     }
 
+    async fn delete_file(&self, path: &str, _message: &str) -> Result<()> {
+        self.files.lock().unwrap().remove(path);
+        Ok(())
+    }
+
     async fn list_files(&self, prefix: &str) -> Result<Vec<String>> {
         let files = self.files.lock().unwrap();
         Ok(files
@@ -121,6 +126,19 @@ async fn mock_list_files_by_prefix() {
     let dev_files = storage.list_files("proj/dev/").await.unwrap();
     assert_eq!(dev_files.len(), 2);
     assert!(dev_files.iter().all(|p| p.starts_with("proj/dev/")));
+}
+
+#[tokio::test]
+async fn mock_delete_file_removes_entry() {
+    let storage = MockStorage::new();
+    storage.seed("proj/dev/a.enc", b"a");
+
+    storage
+        .delete_file("proj/dev/a.enc", "cleanup")
+        .await
+        .unwrap();
+
+    assert!(!storage.all_paths().iter().any(|p| p == "proj/dev/a.enc"));
 }
 
 /// End-to-end: encrypt → push → pull → decrypt using mock storage.
