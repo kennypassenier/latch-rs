@@ -1,8 +1,9 @@
-name: "Version bump (patch)"
+name: Version bump patch
 
-'on':
+on:
   push:
-    branches: ["main"]
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -10,10 +11,6 @@ permissions:
 
 jobs:
   bump-patch:
-    # Do not create a new bump PR when the commit itself is already a version bump.
-    if: >-
-      github.actor != 'github-actions[bot]' &&
-      !startsWith(github.event.head_commit.message, 'chore(version) bump patch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,7 +18,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Decide whether to skip
+        id: guard
+        run: |
+          if [[ "${{ github.actor }}" == "github-actions[bot]" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event.head_commit.message }}" == chore\(version\)\ bump\ patch* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
       - name: Bump patch version in Cargo.toml
+        if: steps.guard.outputs.skip != 'true'
+        id: bump
         run: |
           old=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
           IFS='.' read -r major minor patch <<< "$old"
@@ -29,21 +43,20 @@ jobs:
 
           sed -i -E "0,/^version = \"[^\"]+\"/s//version = \"$new\"/" Cargo.toml
 
-          echo "OLD_VERSION=$old" >> "$GITHUB_ENV"
-          echo "NEW_VERSION=$new" >> "$GITHUB_ENV"
+          echo "old_version=$old" >> "$GITHUB_OUTPUT"
+          echo "new_version=$new" >> "$GITHUB_OUTPUT"
 
       - name: Create version bump pull request
+        if: steps.guard.outputs.skip != 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          commit-message: >-
-            chore(version) bump patch ${{ env.OLD_VERSION }} -> ${{ env.NEW_VERSION }}
-          title: >-
-            chore(version) bump patch to ${{ env.NEW_VERSION }}
+          commit-message: chore-version-bump-${{ steps.bump.outputs.new_version }}
+          title: chore version bump to ${{ steps.bump.outputs.new_version }}
           body: |
             Automated patch version bump after merge to main.
 
-            - Previous: `${{ env.OLD_VERSION }}`
-            - New: `${{ env.NEW_VERSION }}`
+            Previous version: `${{ steps.bump.outputs.old_version }}`
+            New version: `${{ steps.bump.outputs.new_version }}`
 
             This PR exists so protected branch rules stay enforced while versioning remains automatic.
           branch: chore/version-bump/${{ github.run_id }}
