@@ -19,8 +19,10 @@ RUN apt-get update && \
 # Copy manifests first for layer-cached dependency compilation.
 COPY Cargo.toml Cargo.lock ./
 
-# Build a dummy main so deps compile and are cached.
-RUN mkdir src && echo 'fn main(){}' > src/main.rs && \
+# Build dummy targets so deps compile and are cached.
+RUN mkdir src && \
+    echo 'fn main(){}' > src/main.rs && \
+    echo '' > src/lib.rs && \
     cargo build --release --locked && \
     rm -rf src
 
