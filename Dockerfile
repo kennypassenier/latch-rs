@@ -26,6 +26,8 @@ RUN mkdir src && echo 'fn main(){}' > src/main.rs && \
 
 # Now copy the real source and build the actual binary.
 COPY src ./src
+ARG LATCH_BUILD_VERSION
+ENV LATCH_BUILD_VERSION=${LATCH_BUILD_VERSION}
 # Touch main.rs so Cargo knows it changed.
 RUN touch src/main.rs && \
     cargo build --release --locked

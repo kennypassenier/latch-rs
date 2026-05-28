@@ -10,6 +10,7 @@ Latch keeps your team's secrets out of application repositories by encrypting ev
 
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
+- [Release process](#release-process)
 - [First-time global setup](#first-time-global-setup)
 - [Per-project setup](#per-project-setup)
 - [Commands](#commands)
@@ -56,6 +57,55 @@ cargo install --path .
 ```bash
 latch --help
 ```
+
+---
+
+## Release process
+
+Latch uses `Cargo.toml` as the manual major/minor version source and Git tags as the release trigger.
+
+### Automatic patch releases
+
+Every push to `main` creates the next patch tag automatically:
+
+1. If `Cargo.toml` is still at the latest released major/minor version, Latch creates the next patch tag.
+2. That tag triggers a GitHub Release with binaries and a GHCR Docker image.
+
+Example:
+
+1. latest tag is `v1.4.2`
+2. `Cargo.toml` still says `1.4.2`
+3. push to `main`
+4. automation creates `v1.4.3`
+5. GitHub Release + Docker image are published for `v1.4.3`
+
+### Manual major/minor releases
+
+When you want to cut a new major or minor line, update `Cargo.toml` before merging:
+
+```bash
+make bump-minor
+# or
+make bump-major
+```
+
+After that change lands on `main`, the automation sees that `Cargo.toml` is ahead of the latest tag and creates that exact release tag instead of another automatic patch bump.
+
+Example:
+
+1. latest tag is `v1.4.3`
+2. you run `make bump-minor` so `Cargo.toml` becomes `1.5.0`
+3. merge to `main`
+4. automation creates `v1.5.0`
+5. GitHub Release + Docker image are published for `v1.5.0`
+
+### Release artifacts
+
+Each release tag publishes:
+
+1. Linux, macOS, and Windows binaries on the GitHub Release page
+2. Multi-arch Docker images to `ghcr.io/kennypassenier/latch-rs`
+3. Binary version metadata that matches the release tag
 
 ---
 

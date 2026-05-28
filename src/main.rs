@@ -9,10 +9,15 @@ mod manifest;
 
 use clap::{Parser, Subcommand};
 
+const BUILD_VERSION: &str = match option_env!("LATCH_BUILD_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Parser)]
 #[command(
     name = "latch",
-    version,
+    version = BUILD_VERSION,
     about = "Encrypted .env secrets manager backed by a private GitHub repository"
 )]
 struct Cli {

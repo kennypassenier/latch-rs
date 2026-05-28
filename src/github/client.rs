@@ -9,6 +9,10 @@ use tracing::debug;
 const API_BASE: &str = "https://api.github.com";
 const ACCEPT_HEADER: &str = "application/vnd.github+json";
 const API_VERSION_HEADER: &str = "2022-11-28";
+const BUILD_VERSION: &str = match option_env!("LATCH_BUILD_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
 
 // ── Response types ────────────────────────────────────────────────────────────
 
@@ -70,7 +74,7 @@ impl GitHubClient {
         })?;
 
         let client = Client::builder()
-            .user_agent(concat!("latch-rs/", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!("latch-rs/{}", BUILD_VERSION))
             .build()
             .context("Building reqwest client")?;
 

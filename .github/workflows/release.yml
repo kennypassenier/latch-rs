@@ -1,4 +1,4 @@
-name: "Release"
+name: Release
 
 'on':
   push:
@@ -47,6 +47,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -75,11 +80,11 @@ jobs:
 
       - name: Build release binary (native)
         if: "!matrix.cross"
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: LATCH_BUILD_VERSION=${{ steps.version.outputs.value }} cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Build release binary (cross)
         if: matrix.cross
-        run: cross build --release --locked --target ${{ matrix.target }}
+        run: LATCH_BUILD_VERSION=${{ steps.version.outputs.value }} cross build --release --locked --target ${{ matrix.target }}
 
       # ── Package ───────────────────────────────────────────────────────────────
       - name: Package (Unix tar.gz)
@@ -131,6 +136,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU (multi-arch builds)
         uses: docker/setup-qemu-action@v3
 
@@ -164,6 +174,8 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            LATCH_BUILD_VERSION=${{ steps.version.outputs.value }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
