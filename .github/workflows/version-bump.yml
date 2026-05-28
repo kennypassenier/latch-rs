@@ -1,0 +1,44 @@
+name: Version bump (patch)
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  bump-patch:
+    # Prevent an infinite loop on the commit created by this workflow itself.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump patch version in Cargo.toml
+        run: |
+          old=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          IFS='.' read -r major minor patch <<< "$old"
+          new="$major.$minor.$((patch + 1))"
+
+          sed -i -E "0,/^version = \"[^\"]+\"/s//version = \"$new\"/" Cargo.toml
+
+          echo "OLD_VERSION=$old" >> "$GITHUB_ENV"
+          echo "NEW_VERSION=$new" >> "$GITHUB_ENV"
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet Cargo.toml; then
+            echo "No version changes detected"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Cargo.toml
+          git commit -m "chore(version): bump patch $OLD_VERSION -> $NEW_VERSION"
+          git push
