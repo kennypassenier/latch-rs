@@ -592,3 +592,5 @@ You have not exported the secrets locally yet. Run `latch export`.
 ### `latch run` exits with code 127 (command not found)
 
 The program you specified is not in `$PATH`. Use the full path, or ensure the binary is installed.
+
+.
