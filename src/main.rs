@@ -140,6 +140,18 @@ enum CloneCommands {
         /// Path to a file containing offer JSON.
         #[arg(long)]
         offer_file: Option<String>,
+        /// Write payload JSON to this file (in addition to stdout).
+        #[arg(long)]
+        stdout_file: Option<String>,
+        /// Include only these projects (repeat flag to select multiple).
+        #[arg(long = "project")]
+        projects: Vec<String>,
+        /// Include only these env-specific keys (repeat flag to select multiple).
+        #[arg(long = "env")]
+        envs: Vec<String>,
+        /// Optional one-time verification code to derive an integrity tag.
+        #[arg(long)]
+        verify_code: Option<String>,
     },
     /// Apply an encrypted payload on the target and restore keyring state.
     Apply {
@@ -149,6 +161,12 @@ enum CloneCommands {
         /// Path to a file containing payload JSON.
         #[arg(long)]
         payload_file: Option<String>,
+        /// Read payload JSON from stdin.
+        #[arg(long)]
+        stdin: bool,
+        /// Optional one-time verification code used to verify payload integrity.
+        #[arg(long)]
+        verify_code: Option<String>,
     },
 }
 
@@ -170,13 +188,38 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Clone { action } => match action {
             CloneCommands::Offer { ttl_minutes } => commands::clone::offer(ttl_minutes).await,
-            CloneCommands::Create { offer, offer_file } => {
-                commands::clone::create(offer.as_deref(), offer_file.as_deref()).await
+            CloneCommands::Create {
+                offer,
+                offer_file,
+                stdout_file,
+                projects,
+                envs,
+                verify_code,
+            } => {
+                commands::clone::create(
+                    offer.as_deref(),
+                    offer_file.as_deref(),
+                    stdout_file.as_deref(),
+                    &projects,
+                    &envs,
+                    verify_code.as_deref(),
+                )
+                .await
             }
             CloneCommands::Apply {
                 payload,
                 payload_file,
-            } => commands::clone::apply(payload.as_deref(), payload_file.as_deref()).await,
+                stdin,
+                verify_code,
+            } => {
+                commands::clone::apply(
+                    payload.as_deref(),
+                    payload_file.as_deref(),
+                    stdin,
+                    verify_code.as_deref(),
+                )
+                .await
+            }
         },
         Commands::Login => commands::login::run().await,
         Commands::Init => commands::init::run().await,

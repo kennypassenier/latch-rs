@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use base64::Engine;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{Read, stdin};
@@ -68,6 +69,8 @@ pub struct ClonePayload {
     pub created_at: u64,
     pub ephemeral_public_key: String,
     pub ciphertext: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub integrity_tag: Option<String>,
 }
 
 fn now_epoch() -> Result<u64> {
@@ -103,12 +106,16 @@ fn parse_offer_input(offer: Option<&str>, offer_file: Option<&str>) -> Result<Cl
     serde_json::from_str(&raw).context("Parsing clone offer JSON")
 }
 
-fn parse_payload_input(payload: Option<&str>, payload_file: Option<&str>) -> Result<ClonePayload> {
+fn parse_payload_input(
+    payload: Option<&str>,
+    payload_file: Option<&str>,
+    read_stdin: bool,
+) -> Result<ClonePayload> {
     let raw = if let Some(text) = payload {
         text.to_string()
     } else if let Some(path) = payload_file {
         fs::read_to_string(path).with_context(|| format!("Reading payload file {}", path))?
-    } else {
+    } else if read_stdin || (payload.is_none() && payload_file.is_none()) {
         let mut buf = String::new();
         stdin()
             .read_to_string(&mut buf)
@@ -117,6 +124,8 @@ fn parse_payload_input(payload: Option<&str>, payload_file: Option<&str>) -> Res
             bail!("Provide --payload, --payload-file, or pipe JSON on stdin")
         }
         buf
+    } else {
+        bail!("Provide --payload, --payload-file, or --stdin")
     };
 
     serde_json::from_str(&raw).context("Parsing clone payload JSON")
@@ -124,6 +133,23 @@ fn parse_payload_input(payload: Option<&str>, payload_file: Option<&str>) -> Res
 
 fn key_from_shared(shared: [u8; 32]) -> [u8; 32] {
     shared
+}
+
+fn compute_integrity_tag(
+    verify_code: &str,
+    offer_id: &str,
+    ephemeral_public_key: &str,
+    ciphertext: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(verify_code.as_bytes());
+    hasher.update(b"|");
+    hasher.update(offer_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ephemeral_public_key.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ciphertext.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 async fn discover_project_envs(project: &ProjectEntry, pat: Option<&str>) -> BTreeSet<String> {
@@ -189,7 +215,14 @@ pub async fn offer(ttl_minutes: u64) -> Result<()> {
     Ok(())
 }
 
-pub async fn create(offer: Option<&str>, offer_file: Option<&str>) -> Result<()> {
+pub async fn create(
+    offer: Option<&str>,
+    offer_file: Option<&str>,
+    stdout_file: Option<&str>,
+    project_filters: &[String],
+    env_filters: &[String],
+    verify_code: Option<&str>,
+) -> Result<()> {
     let parsed_offer = parse_offer_input(offer, offer_file)?;
     if parsed_offer.version != CLONE_VERSION {
         bail!(
@@ -234,9 +267,37 @@ pub async fn create(offer: Option<&str>, offer_file: Option<&str>) -> Result<()>
     }
 
     let global = GlobalConfig::load().unwrap_or_default();
+    let project_filter_set = project_filters
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect::<BTreeSet<_>>();
+    let env_filter_set = env_filters
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect::<BTreeSet<_>>();
+
+    if !project_filter_set.is_empty() {
+        let known = global
+            .projects
+            .iter()
+            .map(|p| p.name.clone())
+            .collect::<BTreeSet<_>>();
+        for requested in &project_filter_set {
+            if !known.contains(requested) {
+                bail!("Unknown project in --project filter: {}", requested);
+            }
+        }
+    }
+
     let mut projects: Vec<ProjectMeta> = Vec::new();
 
     for p in &global.projects {
+        if !project_filter_set.is_empty() && !project_filter_set.contains(&p.name) {
+            continue;
+        }
+
         projects.push(ProjectMeta {
             name: p.name.clone(),
             secrets_repo: p.secrets_repo.clone(),
@@ -261,7 +322,10 @@ pub async fn create(offer: Option<&str>, offer_file: Option<&str>) -> Result<()>
             .or_else(|| KeyringProvider::get_raw(&format!("{}.pat", p.name)))
             .or_else(|| p.github_pat.clone());
 
-        let envs = discover_project_envs(p, pat_for_manifest.as_deref()).await;
+        let mut envs = discover_project_envs(p, pat_for_manifest.as_deref()).await;
+        if !env_filter_set.is_empty() {
+            envs.retain(|e| env_filter_set.contains(e));
+        }
         for env_name in envs {
             let slot = format!("{}.key.{}", p.name, env_name);
             if let Some(v) = KeyringProvider::get_raw(&slot) {
@@ -285,27 +349,62 @@ pub async fn create(offer: Option<&str>, offer_file: Option<&str>) -> Result<()>
     let key = key_from_shared(*shared.as_bytes());
     let ciphertext = encrypt(&bundle_bytes, &key)?;
 
+    let ephemeral_public_key =
+        base64::engine::general_purpose::STANDARD.encode(ephemeral_public.as_bytes());
+    let ciphertext_b64 = base64::engine::general_purpose::STANDARD.encode(ciphertext);
+    let integrity_tag = verify_code.map(|code| {
+        compute_integrity_tag(
+            code,
+            &parsed_offer.offer_id,
+            &ephemeral_public_key,
+            &ciphertext_b64,
+        )
+    });
+
     let payload = ClonePayload {
         version: CLONE_VERSION,
         offer_id: parsed_offer.offer_id,
         created_at: now,
-        ephemeral_public_key: base64::engine::general_purpose::STANDARD
-            .encode(ephemeral_public.as_bytes()),
-        ciphertext: base64::engine::general_purpose::STANDARD.encode(ciphertext),
+        ephemeral_public_key,
+        ciphertext: ciphertext_b64,
+        integrity_tag,
     };
 
-    println!("{}", serde_json::to_string(&payload)?);
+    let out = serde_json::to_string(&payload)?;
+    if let Some(path) = stdout_file {
+        fs::write(path, out.as_bytes()).with_context(|| format!("Writing {}", path))?;
+    }
+    println!("{}", out);
     Ok(())
 }
 
-pub async fn apply(payload: Option<&str>, payload_file: Option<&str>) -> Result<()> {
-    let parsed_payload = parse_payload_input(payload, payload_file)?;
+pub async fn apply(
+    payload: Option<&str>,
+    payload_file: Option<&str>,
+    read_stdin: bool,
+    verify_code: Option<&str>,
+) -> Result<()> {
+    let parsed_payload = parse_payload_input(payload, payload_file, read_stdin)?;
     if parsed_payload.version != CLONE_VERSION {
         bail!(
             "Unsupported payload version {} (expected {})",
             parsed_payload.version,
             CLONE_VERSION
         );
+    }
+
+    if let Some(code) = verify_code {
+        let expected = compute_integrity_tag(
+            code,
+            &parsed_payload.offer_id,
+            &parsed_payload.ephemeral_public_key,
+            &parsed_payload.ciphertext,
+        );
+        match &parsed_payload.integrity_tag {
+            Some(actual) if actual == &expected => {}
+            Some(_) => bail!("Payload integrity verification failed (tag mismatch)"),
+            None => bail!("Payload has no integrity tag; recreate it with --verify-code on source"),
+        }
     }
 
     let offer_path = clone_offer_path(&parsed_payload.offer_id);

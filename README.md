@@ -169,7 +169,7 @@ Secure credential migration between machines.
 
 ```
 latch clone offer [--ttl-minutes 10]
-latch clone create --offer-file ./offer.json
+latch clone create --offer-file ./offer.json [--stdout-file ./payload.json]
 latch clone apply --payload-file ./payload.json
 ```
 
@@ -177,6 +177,12 @@ Typical flow:
 1. Target machine (for example an LXC agent) runs `latch clone offer` and sends the JSON offer to the source machine.
 2. Source machine runs `latch clone create` using that offer and sends the encrypted payload back.
 3. Target machine runs `latch clone apply` to restore keyring entries and project metadata.
+
+Automation-friendly options:
+1. `latch clone create --stdout-file ./payload.json` writes payload to a file while still printing JSON to stdout.
+2. `latch clone apply --stdin` reads payload JSON from stdin.
+3. `latch clone create --project my-app --project worker --env prod` limits exported credentials.
+4. `latch clone create --verify-code <code>` adds an integrity tag; `latch clone apply --verify-code <code>` verifies it before decrypting.
 
 What gets cloned:
 1. Global keyring slots (`github.pat`, `github.secrets_repo`)
@@ -188,6 +194,7 @@ Security notes:
 1. Payloads are encrypted end-to-end using an ephemeral Diffie-Hellman exchange (x25519).
 2. Offers expire automatically (default 10 minutes).
 3. Applying a payload consumes and removes the local stored offer.
+4. Optional one-time integrity verification is available via `--verify-code` on both create and apply.
 
 ---
 
