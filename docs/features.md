@@ -80,7 +80,7 @@
   * **Task:** Integrate `indicatif` for progress bars during GitHub uploads/downloads. Use `tracing` for debug logs.
   * **Test:** Visual manual verification. (Unit testing progress bars is notoriously flaky, skip strict assertions here).
 
-## 8. Future Roadmap (v2/v3 Additions)
+## 8. Completed Roadmap Items (Delivered)
 - [x] **8.1. Secret Rotation (`latch rotate`)**
   * **Task:** Create a command to download all secrets, decrypt them with the current key, encrypt them with a new key, upload them, and update the local Keyring.
   * **Test:** Run rotation with a mock storage, assert the old key fails to decrypt the new payload and the new key succeeds.
