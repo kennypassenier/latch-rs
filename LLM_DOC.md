@@ -33,34 +33,42 @@ Capture this output and send it to the source machine.
 
 ### Step 2: Source creates encrypted payload
 
-On source machine, write offer JSON to a file (for example offer.json), then run:
+On source machine, run directly from target offer (no temp file needed):
 
-latch clone create --offer-file ./offer.json --stdout-file ./payload.json
+latch clone create --offer-stdin [--project ...] [--env ...] [--verify-code ...]
+
+Or from a file:
+
+latch clone create --offer-file ./offer.json
 
 This prints a JSON payload containing:
 - offer_id
 - ephemeral_public_key
 - ciphertext
+- optional integrity_tag
 
 Optional source flags:
-- --project <name> (repeatable)
-- --env <name> (repeatable)
-- --verify-code <VERIFY_CODE>
+- --offer-stdin (read offer from stdin; default if no --offer/--offer-file)
+- --project <name> (repeatable; filter which projects to export)
+- --env <name> (repeatable; filter which env-specific keys to export)
+- --verify-code <VERIFY_CODE> (add integrity tag to payload)
+- --stdout-file <path> (write payload to file in addition to stdout)
 
 Capture this output and send it back to target.
 
 ### Step 3: Target applies payload
 
-On target machine, write payload JSON to a file (for example payload.json), then run:
+On target machine, read directly from source (no temp file needed):
+
+latch clone apply --stdin [--verify-code ...]
+
+Or from a file:
 
 latch clone apply --payload-file ./payload.json
 
-Or stream directly:
-
-cat payload.json | latch clone apply --stdin
-
-Optional target flag:
-- --verify-code <VERIFY_CODE>
+Optional target flags:
+- --stdin (read payload from stdin; default if no --payload/--payload-file)
+- --verify-code <VERIFY_CODE> (verify payload integrity before decrypting)
 
 This restores keyring credentials and merges project metadata.
 
@@ -87,19 +95,31 @@ Your agent should:
 
 ## Example machine-to-machine sequence
 
-Target:
-- run latch clone offer
-- return stdout JSON as OFFER_JSON
+### Piped (zero temp files):
 
-Source:
-- write OFFER_JSON to offer.json
-- run latch clone create --offer-file offer.json --stdout-file payload.json [--project ...] [--env ...] [--verify-code ...]
-- return stdout JSON as PAYLOAD_JSON
+```bash
+# On target, pipe offer directly to source over SSH, get payload back, apply immediately
+latch clone offer | ssh source-user@source-host \
+  'latch clone create --offer-stdin --verify-code shared-secret' | \
+  latch clone apply --stdin --verify-code shared-secret
+```
 
-Target:
-- write PAYLOAD_JSON to payload.json
-- run latch clone apply --payload-file payload.json [--verify-code ...]
-- verify by running latch status in a linked project folder
+### With verification:
+
+```bash
+# Same flow but with one-time code for transport integrity
+CODE=$(openssl rand -hex 8)
+latch clone offer | ssh source-user@source-host \
+  "latch clone create --offer-stdin --verify-code $CODE" | \
+  latch clone apply --stdin --verify-code $CODE
+```
+
+### Step-by-step (with temp files if needed):
+
+1. Target: `latch clone offer` → save to offer.json, send to source
+2. Source: `latch clone create --offer-file offer.json` → save output to payload.json, send to target
+3. Target: `latch clone apply --payload-file payload.json` → restores keyring
+4. Verify: `latch status` in a linked project folder
 
 ## Optional post-checks
 

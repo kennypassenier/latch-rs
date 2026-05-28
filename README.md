@@ -173,16 +173,27 @@ latch clone create --offer-file ./offer.json [--stdout-file ./payload.json]
 latch clone apply --payload-file ./payload.json
 ```
 
+No-temp-files convenience (for agents):
+
+```bash
+# One-liner on target (generates offer, pipes to source)
+latch clone offer | ssh user@source latch clone create --offer-stdin --stdout-file - | latch clone apply --stdin
+
+# Or in steps (piped directly)
+latch clone offer > >(ssh user@source 'cat > offer.json' && ssh user@source 'latch clone create --offer-file offer.json' > >(latch clone apply --stdin))
+```
+
 Typical flow:
 1. Target machine (for example an LXC agent) runs `latch clone offer` and sends the JSON offer to the source machine.
 2. Source machine runs `latch clone create` using that offer and sends the encrypted payload back.
 3. Target machine runs `latch clone apply` to restore keyring entries and project metadata.
 
 Automation-friendly options:
-1. `latch clone create --stdout-file ./payload.json` writes payload to a file while still printing JSON to stdout.
-2. `latch clone apply --stdin` reads payload JSON from stdin.
-3. `latch clone create --project my-app --project worker --env prod` limits exported credentials.
-4. `latch clone create --verify-code <code>` adds an integrity tag; `latch clone apply --verify-code <code>` verifies it before decrypting.
+1. `latch clone create --offer-stdin` reads offer JSON from stdin (pipes directly from target offer generation).
+2. `latch clone create --stdout-file ./payload.json` writes payload to a file while still printing JSON to stdout.
+3. `latch clone apply --stdin` reads payload JSON from stdin (enables zero-file workflows).
+4. `latch clone create --project my-app --project worker --env prod` limits exported credentials.
+5. `latch clone create --verify-code <code>` adds an integrity tag; `latch clone apply --verify-code <code>` verifies it before decrypting.
 
 What gets cloned:
 1. Global keyring slots (`github.pat`, `github.secrets_repo`)

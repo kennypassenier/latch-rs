@@ -94,13 +94,26 @@ fn random_hex(bytes: usize) -> String {
     hex::encode(buf)
 }
 
-fn parse_offer_input(offer: Option<&str>, offer_file: Option<&str>) -> Result<CloneOffer> {
+fn parse_offer_input(
+    offer: Option<&str>,
+    offer_file: Option<&str>,
+    read_stdin: bool,
+) -> Result<CloneOffer> {
     let raw = if let Some(text) = offer {
         text.to_string()
     } else if let Some(path) = offer_file {
         fs::read_to_string(path).with_context(|| format!("Reading offer file {}", path))?
+    } else if read_stdin || (offer.is_none() && offer_file.is_none()) {
+        let mut buf = String::new();
+        stdin()
+            .read_to_string(&mut buf)
+            .context("Reading offer from stdin")?;
+        if buf.trim().is_empty() {
+            bail!("Provide --offer, --offer-file, or pipe JSON on stdin")
+        }
+        buf
     } else {
-        bail!("Provide either --offer or --offer-file")
+        bail!("Provide --offer, --offer-file, or --offer-stdin")
     };
 
     serde_json::from_str(&raw).context("Parsing clone offer JSON")
@@ -218,12 +231,13 @@ pub async fn offer(ttl_minutes: u64) -> Result<()> {
 pub async fn create(
     offer: Option<&str>,
     offer_file: Option<&str>,
+    offer_stdin: bool,
     stdout_file: Option<&str>,
     project_filters: &[String],
     env_filters: &[String],
     verify_code: Option<&str>,
 ) -> Result<()> {
-    let parsed_offer = parse_offer_input(offer, offer_file)?;
+    let parsed_offer = parse_offer_input(offer, offer_file, offer_stdin)?;
     if parsed_offer.version != CLONE_VERSION {
         bail!(
             "Unsupported offer version {} (expected {})",

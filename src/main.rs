@@ -140,6 +140,9 @@ enum CloneCommands {
         /// Path to a file containing offer JSON.
         #[arg(long)]
         offer_file: Option<String>,
+        /// Read offer JSON from stdin.
+        #[arg(long)]
+        offer_stdin: bool,
         /// Write payload JSON to this file (in addition to stdout).
         #[arg(long)]
         stdout_file: Option<String>,
@@ -191,6 +194,7 @@ async fn main() -> anyhow::Result<()> {
             CloneCommands::Create {
                 offer,
                 offer_file,
+                offer_stdin,
                 stdout_file,
                 projects,
                 envs,
@@ -199,6 +203,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::clone::create(
                     offer.as_deref(),
                     offer_file.as_deref(),
+                    offer_stdin,
                     stdout_file.as_deref(),
                     &projects,
                     &envs,
