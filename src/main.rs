@@ -95,6 +95,7 @@ enum PathCommands {
     /// Install the current Latch binary into a user PATH location.
     Add,
     /// Remove the user-level PATH installation added by Latch.
+    #[command(alias = "delete")]
     Remove,
     /// Show PATH installation status for the current machine.
     Status,
