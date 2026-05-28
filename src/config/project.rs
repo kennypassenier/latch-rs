@@ -32,6 +32,21 @@ impl ProjectConfig {
         loop {
             let candidate = dir.join(".latch").join("config.toml");
             if candidate.exists() {
+                // Ignore global ~/.latch/config.toml; we only want project-local
+                // metadata files committed under <project>/.latch/config.toml.
+                if candidate == crate::config::global::GlobalConfig::path() {
+                    match dir.parent() {
+                        Some(parent) => {
+                            dir = parent.to_path_buf();
+                            continue;
+                        }
+                        None => {
+                            bail!(
+                                "No .latch/config.toml found. Run 'latch init' in your project root."
+                            )
+                        }
+                    }
+                }
                 let text = std::fs::read_to_string(&candidate)
                     .with_context(|| format!("Reading {}", candidate.display()))?;
                 let cfg: Self = toml::from_str(&text)

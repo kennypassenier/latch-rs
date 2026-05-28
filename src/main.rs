@@ -88,6 +88,12 @@ enum Commands {
         #[command(subcommand)]
         action: PathCommands,
     },
+
+    /// Discover and bind remote projects for export in the current folder.
+    Project {
+        #[command(subcommand)]
+        action: ProjectCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -99,6 +105,25 @@ enum PathCommands {
     Remove,
     /// Show PATH installation status for the current machine.
     Status,
+}
+
+#[derive(Subcommand)]
+enum ProjectCommands {
+    /// List project names discovered in a secrets repo.
+    List {
+        /// Secrets repo in owner/repo format. If omitted, inferred from global config.
+        #[arg(long)]
+        repo: Option<String>,
+    },
+    /// Bind this folder to a discovered project and optionally export immediately.
+    Use {
+        /// Secrets repo in owner/repo format. If omitted, inferred from global config.
+        #[arg(long)]
+        repo: Option<String>,
+        /// Environment to use; if omitted you can pick interactively.
+        #[arg(long, short)]
+        env: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -135,6 +160,12 @@ async fn main() -> anyhow::Result<()> {
             PathCommands::Add => commands::path::add().await,
             PathCommands::Remove => commands::path::remove().await,
             PathCommands::Status => commands::path::status().await,
+        },
+        Commands::Project { action } => match action {
+            ProjectCommands::List { repo } => commands::project::list(repo.as_deref()).await,
+            ProjectCommands::Use { repo, env } => {
+                commands::project::use_in_current_dir(repo.as_deref(), env.as_deref()).await
+            }
         },
     }
 }
