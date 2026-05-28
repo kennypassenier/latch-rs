@@ -1,4 +1,4 @@
-name: "Docker Beta"
+name: "Docker Image Build"
 
 'on':
   push:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   docker-beta:
-    name: Push beta image to GHCR
+    name: Push main image to GHCR
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,9 +45,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=beta
-            type=raw,value=v${{ steps.version.outputs.value }}-beta
-            type=raw,value=v${{ steps.version.outputs.value }}-beta.${{ github.run_number }}
+            type=raw,value=main
+            type=raw,value=v${{ steps.version.outputs.value }}
+            type=raw,value=v${{ steps.version.outputs.value }}.${{ github.run_number }}
             type=sha,prefix=sha-,format=short
 
       - name: Build and push
