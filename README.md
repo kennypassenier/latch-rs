@@ -14,6 +14,7 @@ Latch keeps your team's secrets out of application repositories by encrypting ev
 - [First-time global setup](#first-time-global-setup)
 - [Per-project setup](#per-project-setup)
 - [Commands](#commands)
+  - [latch clone](#latch-clone)
   - [latch login](#latch-login)
   - [latch init](#latch-init)
   - [latch project](#latch-project)
@@ -161,6 +162,34 @@ The manifest (`my-app/manifest.json`) is pushed to your secrets repository and t
 ---
 
 ## Commands
+
+### latch clone
+
+Secure credential migration between machines.
+
+```
+latch clone offer [--ttl-minutes 10]
+latch clone create --offer-file ./offer.json
+latch clone apply --payload-file ./payload.json
+```
+
+Typical flow:
+1. Target machine (for example an LXC agent) runs `latch clone offer` and sends the JSON offer to the source machine.
+2. Source machine runs `latch clone create` using that offer and sends the encrypted payload back.
+3. Target machine runs `latch clone apply` to restore keyring entries and project metadata.
+
+What gets cloned:
+1. Global keyring slots (`github.pat`, `github.secrets_repo`)
+2. Project key slots (`<project>.key`, `<project>.key.<env>`)
+3. Legacy project PAT slots (`<project>.pat`) when present
+4. Project metadata entries in `~/.latch/config.toml`
+
+Security notes:
+1. Payloads are encrypted end-to-end using an ephemeral Diffie-Hellman exchange (x25519).
+2. Offers expire automatically (default 10 minutes).
+3. Applying a payload consumes and removes the local stored offer.
+
+---
 
 ### latch login
 

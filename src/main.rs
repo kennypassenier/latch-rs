@@ -31,6 +31,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Securely clone Latch credentials to another machine.
+    Clone {
+        #[command(subcommand)]
+        action: CloneCommands,
+    },
+
     /// Store global GitHub credentials (PAT + default secrets repo) in keyring.
     Login,
 
@@ -118,6 +124,34 @@ enum PathCommands {
     Status,
 }
 
+#[derive(Subcommand)]
+enum CloneCommands {
+    /// Generate a target-side offer containing an ephemeral public key.
+    Offer {
+        /// Offer expiry in minutes.
+        #[arg(long, default_value_t = 10)]
+        ttl_minutes: u64,
+    },
+    /// Create an encrypted payload from local credentials and an offer.
+    Create {
+        /// Offer JSON string.
+        #[arg(long)]
+        offer: Option<String>,
+        /// Path to a file containing offer JSON.
+        #[arg(long)]
+        offer_file: Option<String>,
+    },
+    /// Apply an encrypted payload on the target and restore keyring state.
+    Apply {
+        /// Payload JSON string.
+        #[arg(long)]
+        payload: Option<String>,
+        /// Path to a file containing payload JSON.
+        #[arg(long)]
+        payload_file: Option<String>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -134,6 +168,16 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
+        Commands::Clone { action } => match action {
+            CloneCommands::Offer { ttl_minutes } => commands::clone::offer(ttl_minutes).await,
+            CloneCommands::Create { offer, offer_file } => {
+                commands::clone::create(offer.as_deref(), offer_file.as_deref()).await
+            }
+            CloneCommands::Apply {
+                payload,
+                payload_file,
+            } => commands::clone::apply(payload.as_deref(), payload_file.as_deref()).await,
+        },
         Commands::Login => commands::login::run().await,
         Commands::Init => commands::init::run().await,
         Commands::Save { env } => commands::save::run(&env).await,
