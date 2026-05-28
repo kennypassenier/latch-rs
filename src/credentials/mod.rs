@@ -15,6 +15,10 @@ pub trait CredentialProvider: Send + Sync {
 
     /// Persist credentials.  Not all providers support writing.
     fn set_credentials(&self, project: &str, pat: Option<&str>, key: Option<&str>) -> Result<()>;
+
+    /// Remove stored credentials.  Not all providers support deletion.
+    #[allow(dead_code)]
+    fn delete_credentials(&self, project: &str) -> Result<()>;
 }
 
 // ── Fallback chain ────────────────────────────────────────────────────────────
@@ -38,7 +42,9 @@ impl FallbackChain {
 
     /// Returns the hex-encoded 32-byte key or an error with a helpful message.
     ///
-    /// Uses the default (project-wide) key slot.
+    /// Uses the default (project-wide) key slot.  Provided as a convenience;
+    /// prefer [`get_key_for_env`] when an env name is available.
+    #[allow(dead_code)]
     pub fn get_key(&self) -> Result<String> {
         self.get_key_for_env(None)
     }
@@ -113,5 +119,22 @@ impl FallbackChain {
              Run 'latch init', set LATCH_PAT, or add github_pat to ~/.latch/config.toml.",
             self.project
         )
+    }
+
+    /// Remove the default project key and PAT from the OS keyring.
+    ///
+    /// A missing entry is treated as success (idempotent).
+    #[allow(dead_code)]
+    pub fn clear_project_credentials(&self) -> Result<()> {
+        KeyringProvider::delete_raw(&format!("{}.key", self.project))?;
+        KeyringProvider::delete_raw(&format!("{}.pat", self.project))?;
+        Ok(())
+    }
+
+    /// Remove the env-specific key slot from the OS keyring.
+    #[allow(dead_code)]
+    pub fn delete_key_for_env(&self, env: &str) -> Result<()> {
+        let slot = format!("{}.key.{}", self.project, env);
+        KeyringProvider::delete_raw(&slot)
     }
 }

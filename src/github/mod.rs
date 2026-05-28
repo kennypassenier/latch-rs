@@ -25,5 +25,6 @@ pub trait RemoteStorage: Send + Sync {
     async fn get_sha(&self, path: &str) -> Result<Option<String>>;
 
     /// List all paths under a given prefix (used when removing stale entries).
+    #[allow(dead_code)]
     async fn list_files(&self, prefix: &str) -> Result<Vec<String>>;
 }

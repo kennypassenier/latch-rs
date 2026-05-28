@@ -23,4 +23,8 @@ impl CredentialProvider for EnvVarProvider {
     ) -> Result<()> {
         anyhow::bail!("Cannot persist credentials via environment variables")
     }
+
+    fn delete_credentials(&self, _project: &str) -> Result<()> {
+        anyhow::bail!("Cannot delete credentials from environment variables")
+    }
 }

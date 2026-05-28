@@ -1,0 +1,59 @@
+# docker-compose.yml — Latch examples
+#
+# Copy this file into your project root and customise as needed.
+#
+# CREDENTIAL NOTES
+# ─────────────────
+# The OS keyring is not available inside Docker containers.
+# Pass credentials via environment variables instead:
+#   LATCH_KEY  — hex-encoded 32-byte encryption key
+#   LATCH_PAT  — GitHub Personal Access Token (contents: read)
+#
+# Store them in a local .env file (NEVER commit it):
+#   echo "LATCH_KEY=<your-key>" >> .latch.env
+#   echo "LATCH_PAT=<your-pat>" >> .latch.env
+#
+# Or inject them from your CI/CD secrets store.
+
+# ── Reusable latch base ───────────────────────────────────────────────────────
+x-latch: &latch
+  image: ghcr.io/kennypassenier/latch-rs:latest
+  pull_policy: always # always pull the latest image
+  volumes:
+    - .:/workspace # mount your project root
+  working_dir: /workspace
+  env_file:
+    - .latch.env # LATCH_KEY + LATCH_PAT
+  # no network needed — latch only calls api.github.com
+
+services:
+  # ── Export dev secrets ──────────────────────────────────────────────────────
+  # Usage: docker compose run --rm latch-export
+  latch-export:
+    <<: *latch
+    command: [ "export", "--env", "dev" ]
+
+  # ── Export prod secrets ─────────────────────────────────────────────────────
+  # Usage: docker compose run --rm latch-export-prod
+  latch-export-prod:
+    <<: *latch
+    command: [ "export", "--env", "prod" ]
+
+  # ── Save dev secrets ────────────────────────────────────────────────────────
+  # Usage: docker compose run --rm latch-save
+  latch-save:
+    <<: *latch
+    command: [ "save", "--env", "dev" ]
+
+  # ── Check sync status ───────────────────────────────────────────────────────
+  # Usage: docker compose run --rm latch-status
+  latch-status:
+    <<: *latch
+    command: [ "status", "--env", "dev" ]
+
+  # ── Run a command with injected secrets (no files written) ──────────────────
+  # Usage: docker compose run --rm latch-run
+  # Customise the `command` array below for your own entrypoint.
+  latch-run:
+    <<: *latch
+    command: [ "run", "--env", "dev", "--", "printenv" ]

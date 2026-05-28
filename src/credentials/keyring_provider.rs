@@ -32,6 +32,19 @@ impl KeyringProvider {
         Ok(())
     }
 
+    #[allow(dead_code)]
+    fn delete(project: &str, kind: &str) -> Result<()> {
+        if let Some(entry) = Self::entry(project, kind) {
+            match entry.delete_credential() {
+                Ok(()) => Ok(()),
+                Err(keyring::Error::NoEntry) => Ok(()), // already absent – not an error
+                Err(e) => Err(anyhow::anyhow!("Keyring delete failed: {}", e)),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
     /// Retrieve a value using the full `username` slot directly (used for
     /// env-scoped key slots like `"myapp.key.prod"`).
     pub fn get_raw(slot: &str) -> Option<String> {
@@ -44,6 +57,18 @@ impl KeyringProvider {
             .map_err(|e| anyhow::anyhow!("Keyring entry creation failed: {}", e))?;
         entry.set_password(value)?;
         Ok(())
+    }
+
+    /// Delete a credential by its full slot name.  A missing entry is not an error.
+    #[allow(dead_code)]
+    pub fn delete_raw(slot: &str) -> Result<()> {
+        match keyring::Entry::new(SERVICE, slot) {
+            Ok(entry) => match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(anyhow::anyhow!("Keyring delete failed: {}", e)),
+            },
+            Err(_) => Ok(()),
+        }
     }
 }
 
@@ -63,6 +88,12 @@ impl CredentialProvider for KeyringProvider {
         if let Some(k) = key {
             Self::set(project, "key", k)?;
         }
+        Ok(())
+    }
+
+    fn delete_credentials(&self, project: &str) -> Result<()> {
+        Self::delete(project, "pat")?;
+        Self::delete(project, "key")?;
         Ok(())
     }
 }

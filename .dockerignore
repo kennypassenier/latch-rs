@@ -1,0 +1,14 @@
+# Exclude everything that doesn't need to be in the Docker build context.
+# This dramatically speeds up `docker build` by not sending large dirs to the daemon.
+
+target/
+.git/
+.github/
+tests/fixtures/
+docs/
+*.md
+!README.md
+.env
+.env.*
+.latch.env
+docker-compose*.yml

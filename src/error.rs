@@ -1,5 +1,9 @@
 use thiserror::Error;
 
+/// Typed error variants for the latch library surface.
+/// Not all variants are exercised by the current CLI commands but are part of
+/// the public library API.
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum LatchError {
     #[error("GitHub API error: {0}")]
@@ -27,4 +31,5 @@ pub enum LatchError {
     NotInitialised,
 }
 
+#[allow(dead_code)]
 pub type Result<T> = std::result::Result<T, LatchError>;

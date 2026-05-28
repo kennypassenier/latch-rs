@@ -19,6 +19,7 @@ struct ContentsResponse {
     content: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct TreeItem {
     path: String,
@@ -26,6 +27,7 @@ struct TreeItem {
     kind: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct TreeResponse {
     tree: Vec<TreeItem>,
@@ -81,6 +83,7 @@ impl GitHubClient {
         )
     }
 
+    #[allow(dead_code)]
     fn tree_url(&self, branch: &str) -> String {
         format!(
             "{}/repos/{}/{}/git/trees/{}?recursive=1",

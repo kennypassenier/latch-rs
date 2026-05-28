@@ -1,0 +1,3 @@
+name = "nested-project"
+secrets_repo = "test-org/secrets"
+default_env = "dev"

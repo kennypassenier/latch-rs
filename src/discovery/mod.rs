@@ -187,6 +187,7 @@ pub fn expand_env_vars(value: &str, known: &[(String, String)]) -> String {
 ///
 /// Variables defined earlier in the same file can be referenced by later lines.
 /// Lines that are blank or comments are passed through unchanged.
+#[allow(dead_code)]
 pub fn expand_env_file(content: &str) -> String {
     let mut resolved: Vec<(String, String)> = Vec::new();
     let mut lines_out: Vec<String> = Vec::new();
