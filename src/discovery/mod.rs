@@ -60,24 +60,13 @@ fn is_env_filename(name: &str) -> bool {
 
 /// Convert a relative local path to a flat remote filename.
 ///
-/// Strips the leading dot from each path component and joins them with `.`:
-/// - `backend/.env`      → `backend.env`
-/// - `src/api/.env`      → `src.api.env`
-/// - `frontend/.env.local` → `frontend.env.local`
+/// Replaces path separators (`/` and `\\`) with `__` while preserving
+/// filenames exactly, including leading dots:
+/// - `backend/.env`         → `backend__.env`
+/// - `src/api/.env`         → `src__api__.env`
+/// - `frontend/.env.local`  → `frontend__.env.local`
 pub fn flatten_path(local_path: &Path) -> String {
-    local_path
-        .components()
-        .filter_map(|c| {
-            let s = c.as_os_str().to_str()?;
-            let s = s.trim_start_matches('.');
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.to_string())
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(".")
+    local_path.to_string_lossy().replace(['/', '\\'], "__")
 }
 
 /// Build the remote repo path for a given project / env / flat filename.
@@ -85,6 +74,34 @@ pub fn flatten_path(local_path: &Path) -> String {
 /// Format: `{project}/{env}/{flat}.enc`
 pub fn remote_path(project: &str, env: &str, flat: &str) -> String {
     format!("{}/{}/{}.enc", project, env, flat)
+}
+
+/// Build the local staging path for a standalone encrypted blob.
+///
+/// Format: `<project_root>/.latch/<env>/<flat>.enc`
+pub fn local_blob_path(
+    project_root: &std::path::Path,
+    env: &str,
+    flat: &str,
+) -> std::path::PathBuf {
+    project_root
+        .join(".latch")
+        .join(env)
+        .join(format!("{}.enc", flat))
+}
+
+/// Build the local staging path for a clone-group encrypted blob.
+///
+/// Format: `<project_root>/.latch/<env>/group.<name>.enc`
+pub fn local_group_blob_path(
+    project_root: &std::path::Path,
+    env: &str,
+    group_name: &str,
+) -> std::path::PathBuf {
+    project_root
+        .join(".latch")
+        .join(env)
+        .join(format!("group.{}.enc", group_name))
 }
 
 // ── .env.example generation ───────────────────────────────────────────────────
@@ -123,6 +140,49 @@ pub fn write_example(env_path: &Path, content: &str) -> Result<()> {
     std::fs::write(&example_path, content)?;
     tracing::debug!("Wrote {}", example_path.display());
     Ok(())
+}
+
+// ── Clone group pragma support ─────────────────────────────────────────────
+
+/// Parse the `# latch:group=<name>` pragma from the first line of a `.env` file.
+///
+/// Returns `Some(group_name)` if the first line is a valid group pragma,
+/// `None` otherwise.  The group name is trimmed of surrounding whitespace.
+///
+/// ```
+/// use std::path::Path;
+/// // A file whose first line is "# latch:group=promtail_config" would return
+/// // Some("promtail_config").
+/// ```
+pub fn read_pragma(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let first = content.lines().next()?;
+    let group = first
+        .trim()
+        .strip_prefix("# latch:group=")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+    let valid = group
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    if valid { Some(group) } else { None }
+}
+
+/// Return `true` if the file contains at least one `KEY=VALUE` pair,
+/// ignoring the optional pragma first line, blank lines, and comment lines.
+///
+/// Used during `latch push` to detect subscribe-intent members (files that
+/// only carry the group pragma and no actual secrets yet).
+pub fn has_key_value_pairs(path: &Path) -> bool {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    // skip(1) skips the pragma line; it is harmless for non-pragma files too
+    // since we only call this after confirming a pragma exists.
+    content.lines().skip(1).any(|line| {
+        let t = line.trim();
+        !t.is_empty() && !t.starts_with('#') && t.contains('=')
+    })
 }
 
 // ── Template variable expansion (8.4) ─────────────────────────────────────────
@@ -232,20 +292,31 @@ mod tests {
 
     #[test]
     fn flatten_simple() {
-        assert_eq!(flatten_path(Path::new("backend/.env")), "backend.env");
+        assert_eq!(flatten_path(Path::new("backend/.env")), "backend__.env");
     }
 
     #[test]
     fn flatten_nested() {
-        assert_eq!(flatten_path(Path::new("src/api/.env")), "src.api.env");
+        assert_eq!(flatten_path(Path::new("src/api/.env")), "src__api__.env");
     }
 
     #[test]
     fn flatten_env_variant() {
         assert_eq!(
             flatten_path(Path::new("frontend/.env.local")),
-            "frontend.env.local"
+            "frontend__.env.local"
         );
+    }
+
+    #[test]
+    fn pragma_requires_valid_group_name() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "# latch:group=group-1\nA=1\n").expect("write");
+        assert_eq!(read_pragma(&path).as_deref(), Some("group-1"));
+
+        std::fs::write(&path, "# latch:group=bad name\nA=1\n").expect("write");
+        assert!(read_pragma(&path).is_none());
     }
 
     #[test]

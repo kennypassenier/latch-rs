@@ -114,6 +114,6 @@ pub async fn run(env_name: Option<&str>) -> Result<()> {
         }
     }
 
-    println!("\nDone. Run 'latch save --env <env>' to re-encrypt secrets with the new key.");
+    println!("\nDone. Run 'latch push --env <env>' to re-encrypt secrets with the new key.");
     Ok(())
 }

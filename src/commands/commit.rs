@@ -1,7 +1,7 @@
 use anyhow::Result;
 use dialoguer::Select;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -10,26 +10,28 @@ use crate::{
     credentials::FallbackChain,
     crypto::{decrypt, encrypt, parse_key},
     discovery::{
-        flatten_path, generate_example, has_key_value_pairs, read_pragma, remote_path,
-        scan_env_files, write_example,
+        flatten_path, generate_example, has_key_value_pairs, local_blob_path,
+        local_group_blob_path, read_pragma, scan_env_files, write_example,
     },
-    github::{RemoteStorage as _, client::GitHubClient},
     manifest::{CloneGroup, FileMapping, Manifest},
 };
 
 // ── Clone-group helpers ───────────────────────────────────────────────────────
 
+/// Encrypt a clone group and write it to the local `.latch/` staging area.
+///
+/// Subscribe-intent members (pragma present, no KEY=VALUE pairs) are resolved
+/// against the local cache instead of GitHub — so `commit` works offline
+/// after an initial `latch pull`.
 async fn process_group(
     group_name: &str,
     members: &[PathBuf],
     project_root: &Path,
-    project: &str,
     env_name: &str,
     key: &[u8; 32],
-    github: &GitHubClient,
     pb: &ProgressBar,
 ) -> Result<Option<CloneGroup>> {
-    let blob_path = CloneGroup::remote_blob_path(project, env_name, group_name);
+    let local_blob = local_group_blob_path(project_root, env_name, group_name);
 
     let mut content_members: Vec<(PathBuf, Vec<u8>)> = Vec::new();
     for abs in members {
@@ -40,17 +42,18 @@ async fn process_group(
 
     // Subscribe intent: all members only have pragma/comments/blank lines.
     let canonical_bytes: Vec<u8> = if content_members.is_empty() {
-        match github.pull_file(&blob_path).await {
-            Ok(ciphertext) => decrypt(&ciphertext, key)?,
-            Err(_) => {
-                pb.suspend(|| {
-                    println!(
-                        "  ⚠ Clone group '{}' has subscribe-only members but no remote blob exists yet.",
-                        group_name
-                    );
-                });
-                return Ok(None);
-            }
+        if local_blob.exists() {
+            // Decrypt the cached blob to recover the canonical plaintext.
+            let ciphertext = std::fs::read(&local_blob)?;
+            decrypt(&ciphertext, key)?
+        } else {
+            pb.suspend(|| {
+                println!(
+                    "  ⚠ Clone group '{}' has subscribe-only members but no local cache exists.\n    Run 'latch pull --env {}' first to fetch the current group state.",
+                    group_name, env_name
+                );
+            });
+            return Ok(None);
         }
     } else if content_members.len() == 1 {
         content_members[0].1.clone()
@@ -92,6 +95,7 @@ async fn process_group(
         }
     };
 
+    // Sync canonical content back to all member files + examples.
     for abs in members {
         if let Some(parent) = abs.parent() {
             std::fs::create_dir_all(parent)?;
@@ -101,15 +105,13 @@ async fn process_group(
         write_example(abs, &example)?;
     }
 
+    // Encrypt and write to local staging area.
     let ciphertext = encrypt(&canonical_bytes, key)?;
+    if let Some(parent) = local_blob.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&local_blob, &ciphertext)?;
     pb.set_message(format!("group:{}", group_name));
-    github
-        .push_file(
-            &blob_path,
-            &ciphertext,
-            &format!("latch: group save {} [{}]", group_name, project),
-        )
-        .await?;
 
     let member_paths = members
         .iter()
@@ -124,7 +126,13 @@ async fn process_group(
     Ok(Some(CloneGroup {
         name: group_name.to_string(),
         env: env_name.to_string(),
-        remote_blob: blob_path,
+        remote_blob: CloneGroup::remote_blob_path(
+            // We don't have the project name here; it will be filled in by run().
+            // Use a placeholder that run() replaces.
+            "__project__",
+            env_name,
+            group_name,
+        ),
         members: member_paths,
     }))
 }
@@ -138,59 +146,22 @@ pub async fn run(env_name: &str) -> Result<()> {
     let chain = FallbackChain::new(&cfg.name);
     let key_hex = chain.get_key_for_env(Some(env_name))?;
     let key = parse_key(&key_hex)?;
-    let pat = chain.get_pat()?;
-    let github = GitHubClient::new(&cfg.secrets_repo, &pat)?;
 
-    let manifest_path = Manifest::remote_path(&cfg.name);
-    let mut manifest = match github.get_sha(&manifest_path).await? {
-        Some(_) => Manifest::from_bytes(&github.pull_file(&manifest_path).await?)?,
-        None => Manifest::new(&cfg.name, None),
-    };
-
-    let previous_mappings = manifest.get_env(env_name).to_vec();
-    let previous_groups: Vec<_> = manifest
-        .clone_groups
-        .iter()
-        .filter(|g| g.env == env_name)
-        .cloned()
-        .collect();
+    // Load any existing staging manifest so we can preserve other envs.
+    let mut staging = Manifest::load_staging(&project_root)?
+        .unwrap_or_else(|| Manifest::new(&cfg.name, None));
 
     let all_files = scan_env_files(&project_root);
     if all_files.is_empty() {
-        if !previous_mappings.is_empty() || !previous_groups.is_empty() {
-            for mapping in &previous_mappings {
-                let rel = Path::new(&mapping.local_path);
-                let flat = flatten_path(rel);
-                let remote = remote_path(&cfg.name, env_name, &flat);
-                github
-                    .delete_file(&remote, &format!("latch: save {} [{}]", env_name, cfg.name))
-                    .await?;
-            }
-            for group in &previous_groups {
-                github
-                    .delete_file(
-                        &group.remote_blob,
-                        &format!("latch: save {} [{}]", env_name, cfg.name),
-                    )
-                    .await?;
-            }
-            manifest.set_env(env_name, Vec::new());
-            manifest.clone_groups.retain(|g| g.env != env_name);
-            github
-                .push_file(
-                    &manifest_path,
-                    &manifest.to_bytes()?,
-                    &format!("latch: save {} (0 files) [{}]", env_name, cfg.name),
-                )
-                .await?;
-            println!(
-                "No .env files found in {}. Cleared tracked files for env '{}'.",
-                project_root.display(),
-                env_name
-            );
-        } else {
-            println!("No .env files found in {}.", project_root.display());
-        }
+        // Clear this env from staging if it was previously tracked.
+        staging.set_env(env_name, Vec::new());
+        staging.clone_groups.retain(|g| g.env != env_name);
+        staging.save_staging(&project_root)?;
+        println!(
+            "No .env files found in {}. Cleared staged files for env '{}'.",
+            project_root.display(),
+            env_name
+        );
         return Ok(());
     }
 
@@ -199,21 +170,17 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     for abs_path in &all_files {
         match read_pragma(abs_path) {
-            Some(group_name) => raw_groups
-                .entry(group_name)
-                .or_default()
-                .push(abs_path.clone()),
+            Some(group_name) => raw_groups.entry(group_name).or_default().push(abs_path.clone()),
             None => standalone_paths.push(abs_path.clone()),
         }
     }
 
     let total_ops = standalone_paths.len() + raw_groups.len();
     println!(
-        "Found {} .env file(s) ({} standalone, {} group(s)) - encrypting and pushing to {} (env: {})",
+        "Found {} .env file(s) ({} standalone, {} group(s)) - encrypting to .latch/ (env: {})",
         all_files.len(),
         standalone_paths.len(),
         raw_groups.len(),
-        cfg.secrets_repo,
         env_name
     );
 
@@ -227,18 +194,12 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     let mut new_groups: Vec<CloneGroup> = Vec::new();
     for (group_name, members) in &raw_groups {
-        if let Some(group) = process_group(
-            group_name,
-            members,
-            &project_root,
-            &cfg.name,
-            env_name,
-            &key,
-            &github,
-            &pb,
-        )
-        .await?
+        if let Some(mut group) =
+            process_group(group_name, members, &project_root, env_name, &key, &pb).await?
         {
+            // Fix up the remote_blob path with the real project name.
+            group.remote_blob =
+                CloneGroup::remote_blob_path(&cfg.name, env_name, group_name);
             new_groups.push(group);
         }
         pb.inc(1);
@@ -250,21 +211,19 @@ pub async fn run(env_name: &str) -> Result<()> {
             .strip_prefix(&project_root)
             .unwrap_or(abs_path.as_path());
         let flat = flatten_path(rel_path);
-        let remote = remote_path(&cfg.name, env_name, &flat);
 
         pb.set_message(format!("{}", rel_path.display()));
 
         let content = std::fs::read(abs_path)?;
         let example = generate_example(&String::from_utf8_lossy(&content));
         write_example(abs_path, &example)?;
+
         let ciphertext = encrypt(&content, &key)?;
-        github
-            .push_file(
-                &remote,
-                &ciphertext,
-                &format!("latch: save {} [{}]", env_name, cfg.name),
-            )
-            .await?;
+        let local_blob = local_blob_path(&project_root, env_name, &flat);
+        if let Some(parent) = local_blob.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&local_blob, &ciphertext)?;
 
         new_mappings.push(FileMapping {
             local_path: rel_path.to_string_lossy().into_owned(),
@@ -272,57 +231,27 @@ pub async fn run(env_name: &str) -> Result<()> {
         pb.inc(1);
     }
 
-    pb.finish_with_message("All files uploaded");
+    pb.finish_with_message("All files staged");
 
-    let new_paths: HashSet<&str> = new_mappings.iter().map(|m| m.local_path.as_str()).collect();
-    for old in &previous_mappings {
-        if !new_paths.contains(old.local_path.as_str()) {
-            let rel = Path::new(&old.local_path);
-            let flat = flatten_path(rel);
-            let remote = remote_path(&cfg.name, env_name, &flat);
-            github
-                .delete_file(&remote, &format!("latch: save {} [{}]", env_name, cfg.name))
-                .await?;
-        }
-    }
+    // Update the staging manifest for this env; preserve other envs.
+    staging.project = cfg.name.clone();
+    staging.set_env(env_name, new_mappings);
+    staging.clone_groups.retain(|g| g.env != env_name);
+    staging.clone_groups.extend(new_groups);
 
-    let new_group_names: HashSet<&str> = new_groups.iter().map(|g| g.name.as_str()).collect();
-    for old_group in &previous_groups {
-        if !new_group_names.contains(old_group.name.as_str()) {
-            github
-                .delete_file(
-                    &old_group.remote_blob,
-                    &format!("latch: save {} [{}]", env_name, cfg.name),
-                )
-                .await?;
-        }
-    }
+    staging.save_staging(&project_root)?;
 
-    manifest.set_env(env_name, new_mappings);
-    manifest.clone_groups.retain(|g| g.env != env_name);
-    manifest.clone_groups.extend(new_groups);
-
-    let total_files = manifest.get_env(env_name).len()
-        + manifest
+    let total_staged = staging.get_env(env_name).len()
+        + staging
             .clone_groups
             .iter()
             .filter(|g| g.env == env_name)
             .count();
-    github
-        .push_file(
-            &manifest_path,
-            &manifest.to_bytes()?,
-            &format!(
-                "latch: save {} ({} files) [{}]",
-                env_name, total_files, cfg.name
-            ),
-        )
-        .await?;
 
-    println!("Manifest updated.");
     println!(
-        "\nAll done! Pull on another machine with: latch pull --env {}",
-        env_name
+        "\nStaged {} file(s) for env '{}' in .latch/.",
+        total_staged, env_name
     );
+    println!("Run 'latch push --env {}' to upload to GitHub.", env_name);
     Ok(())
 }

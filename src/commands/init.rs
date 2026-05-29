@@ -183,7 +183,7 @@ pub async fn run() -> Result<()> {
     }
 
     println!(
-        "\nLatch initialised!  Run 'latch save --env {}' to encrypt and push your .env files.",
+        "\nLatch initialised!  Run 'latch push --env {}' to encrypt and push your .env files.",
         default_env
     );
     Ok(())

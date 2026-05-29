@@ -7,7 +7,7 @@ use crate::{
     config::project::ProjectConfig,
     credentials::FallbackChain,
     crypto::{decrypt, parse_key},
-    discovery::{flatten_path, remote_path},
+    discovery::{flatten_path, local_blob_path, local_group_blob_path, remote_path},
     github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
@@ -142,6 +142,10 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
         pb.set_message(format!("{}", rel_path.display()));
 
         let ciphertext = github.pull_file(&remote).await?;
+        // Cache encrypted blob to .latch/ for offline commit and subscribe-intent.
+        let cached = local_blob_path(&project_root, env_name, &flat);
+        if let Some(p) = cached.parent() { std::fs::create_dir_all(p)?; }
+        std::fs::write(&cached, &ciphertext)?;
         let plaintext = decrypt(&ciphertext, &key)?;
         write_file!(&local_abs, &plaintext);
     }
@@ -149,6 +153,10 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
     for group in &groups {
         pb.set_message(format!("group:{}", group.name));
         let ciphertext = github.pull_file(&group.remote_blob).await?;
+        // Cache group blob to .latch/ so subscribe-intent members can commit offline.
+        let cached = local_group_blob_path(&project_root, env_name, &group.name);
+        if let Some(p) = cached.parent() { std::fs::create_dir_all(p)?; }
+        std::fs::write(&cached, &ciphertext)?;
         let plaintext = decrypt(&ciphertext, &key)?;
 
         for member_path in &group.members {
@@ -160,5 +168,9 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
 
     pb.finish_with_message("Pull complete");
     println!("\nPulled {} file(s), skipped {}.", written, skipped);
+
+    // Update the local staging cache so `latch commit` can work offline
+    // and subscribe-intent clone-group members can resolve from the cache.
+    manifest.save_staging(&project_root)?;
     Ok(())
 }

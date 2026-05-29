@@ -43,16 +43,31 @@ enum Commands {
     /// Initialise Latch for the current project (interactive).
     Init,
 
-    /// Encrypt and push all .env files to the remote secrets repo.
-    Save {
+    /// Encrypt and stage .env files locally in `.latch/` (no network needed).
+    ///
+    /// After committing, run `latch push` to upload to GitHub.
+    #[command(alias = "lock")]
+    Commit {
+        /// Target environment name (e.g. dev, staging, prod).
+        #[arg(long, short, default_value = "dev")]
+        env: String,
+    },
+
+    /// Upload staged encrypted files from `.latch/` to the remote secrets repo.
+    ///
+    /// Requires `latch commit` to have been run first. No encryption key needed.
+    #[command(alias = "save")]
+    Push {
         /// Target environment name (e.g. dev, staging, prod).
         #[arg(long, short, default_value = "dev")]
         env: String,
     },
 
     /// Pull and decrypt .env files from the remote secrets repo.
-    #[command(alias = "export")]
-    Load {
+    ///
+    /// Also caches encrypted blobs to `.latch/` for offline `commit` support.
+    #[command(alias = "load", alias = "unlock", alias = "export")]
+    Pull {
         /// Source environment name.
         #[arg(long, short, default_value = "dev")]
         env: String,
@@ -111,6 +126,40 @@ enum Commands {
         #[arg(long)]
         list: bool,
     },
+
+    /// List or inspect clone groups for an environment.
+    Group {
+        #[command(subcommand)]
+        action: GroupCommands,
+    },
+
+    /// Show save history for the current project.
+    History {
+        /// Environment name (informational only; history is per-project).
+        #[arg(long, short, default_value = "dev")]
+        env: String,
+
+        /// Number of commits to show.
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+
+    /// Roll back an environment to a previous save state.
+    ///
+    /// Creates a new forward commit; history is never rewritten.
+    Rollback {
+        /// Environment to roll back.
+        #[arg(long, short, default_value = "dev")]
+        env: String,
+
+        /// Roll back this many commits (default: 1 = one step back).
+        #[arg(long, default_value_t = 1, conflicts_with = "to")]
+        steps: usize,
+
+        /// Roll back to this exact commit SHA.
+        #[arg(long, conflicts_with = "steps")]
+        to: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -122,6 +171,24 @@ enum PathCommands {
     Remove,
     /// Show PATH installation status for the current machine.
     Status,
+}
+
+#[derive(Subcommand)]
+enum GroupCommands {
+    /// List all clone groups for an environment.
+    List {
+        /// Environment name.
+        #[arg(long, short, default_value = "dev")]
+        env: String,
+    },
+    /// Show details (member paths) of a specific clone group.
+    Show {
+        /// Group name.
+        name: String,
+        /// Environment name.
+        #[arg(long, short, default_value = "dev")]
+        env: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -177,7 +244,6 @@ enum CloneCommands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Initialise tracing
     let level = match cli.verbose {
         0 => tracing::Level::WARN,
         1 => tracing::Level::INFO,
@@ -228,8 +294,9 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Login => commands::login::run().await,
         Commands::Init => commands::init::run().await,
-        Commands::Save { env } => commands::save::run(&env).await,
-        Commands::Load { env, dry_run } => commands::export::run(&env, dry_run).await,
+        Commands::Commit { env } => commands::commit::run(&env).await,
+        Commands::Push { env } => commands::push::run(&env).await,
+        Commands::Pull { env, dry_run } => commands::pull::run(&env, dry_run).await,
         Commands::Status { env } => commands::status::run(&env).await,
         Commands::Rotate => commands::rotate::run().await,
         Commands::Run { env, command } => {
@@ -252,6 +319,14 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 commands::project::run(repo.as_deref(), env.as_deref()).await
             }
+        }
+        Commands::Group { action } => match action {
+            GroupCommands::List { env } => commands::group::run_list(&env).await,
+            GroupCommands::Show { name, env } => commands::group::run_show(&env, &name).await,
+        },
+        Commands::History { env, limit } => commands::history::run(&env, limit).await,
+        Commands::Rollback { env, steps, to } => {
+            commands::rollback::run(&env, to.as_deref(), steps).await
         }
     }
 }
