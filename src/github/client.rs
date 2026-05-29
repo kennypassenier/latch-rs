@@ -52,6 +52,7 @@ struct CommitDetail {
 #[derive(Deserialize)]
 struct CommitAuthorInfo {
     name: String,
+    #[allow(dead_code)]
     date: String,
 }
 
