@@ -973,6 +973,12 @@ cargo build --release
 ### Run Tests
 
 ```bash
+# Install git hooks once (pre-commit runs ci-local and blocks failing commits)
+make install-hooks
+
+# CI-equivalent preflight (fmt + clippy + tests + msrv)
+make ci-local
+
 # Full test suite (111+ tests)
 cargo test
 

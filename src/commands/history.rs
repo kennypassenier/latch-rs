@@ -34,7 +34,7 @@ pub async fn run(env: &str, limit: usize) -> Result<()> {
         "Save history for project '{}' (env hint: '{}'):\n",
         cfg.name, env
     );
-    println!("  {:<8}  {:<10}  {:<24}  {}", "#", "SHA", "Date", "Message");
+    println!("  {:<8}  {:<10}  {:<24}  Message", "#", "SHA", "Date");
     println!(
         "  {}  {}  {}  {}",
         "─".repeat(8),

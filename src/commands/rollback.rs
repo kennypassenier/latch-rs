@@ -79,7 +79,7 @@ pub async fn run(env_name: &str, to_sha: Option<&str>, steps: usize) -> Result<(
         let flat = flatten_path(rel);
         let remote = remote_path(&cfg.name, env_name, &flat);
 
-        pb.set_message(format!("{}", mapping.local_path));
+        pb.set_message(mapping.local_path.clone());
         match github.pull_file_at_ref(&remote, &target_sha).await {
             Ok(old_content) => {
                 github

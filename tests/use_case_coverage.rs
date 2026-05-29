@@ -12,22 +12,20 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
+type FileBytes = Vec<u8>;
+type HistoryEntry = (String, FileBytes);
+type FileMap = HashMap<String, FileBytes>;
+type HistoryMap = HashMap<String, Vec<HistoryEntry>>;
+
 #[derive(Default, Clone)]
 struct MockStorage {
-    files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    history: Arc<Mutex<HashMap<String, Vec<(String, Vec<u8>)>>>>,
+    files: Arc<Mutex<FileMap>>,
+    history: Arc<Mutex<HistoryMap>>,
 }
 
 impl MockStorage {
     fn new() -> Self {
         Self::default()
-    }
-
-    fn seed(&self, path: &str, content: &[u8]) {
-        self.files
-            .lock()
-            .unwrap()
-            .insert(path.to_string(), content.to_vec());
     }
 }
 
