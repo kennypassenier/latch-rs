@@ -5,7 +5,6 @@
 /// must be updated to include coverage for the newly implemented feature.
 ///
 /// Run: cargo test --test use_case_checklist -- --nocapture
-
 use std::collections::HashMap;
 
 #[test]
@@ -88,10 +87,7 @@ fn all_implemented_use_cases_have_test_coverage() {
             "latch-login",
             vec![], // Interactive keyring; covered via integration but not directly automatable
         ),
-        (
-            "latch-path",
-            vec!["subcommand_help_pages_are_accessible"],
-        ),
+        ("latch-path", vec!["subcommand_help_pages_are_accessible"]),
         (
             "latch-project",
             vec!["subcommand_help_pages_are_accessible"],
@@ -208,34 +204,28 @@ fn all_implemented_use_cases_have_test_coverage() {
         .map(|(name, _)| *name)
         .collect();
 
-    println!(
-        "\n╔════════════════════════════════════════════════════════════╗"
-    );
-    println!(
-        "║         USE-CASE COVERAGE CHECKLIST FOR V1.0.0             ║"
-    );
-    println!(
-        "╚════════════════════════════════════════════════════════════╝\n"
-    );
+    println!("\n╔════════════════════════════════════════════════════════════╗");
+    println!("║         USE-CASE COVERAGE CHECKLIST FOR V1.0.0             ║");
+    println!("╚════════════════════════════════════════════════════════════╝\n");
+
+    println!("Total implemented use-cases: {}\n", all_use_cases.len());
 
     println!(
-        "Total implemented use-cases: {}\n",
+        "✅ AUTOMATED COVERAGE ({}/{}):",
+        covered.len(),
         all_use_cases.len()
     );
-
-    println!("✅ AUTOMATED COVERAGE ({}/{}):", covered.len(), all_use_cases.len());
     for name in &covered {
         let tests = &coverage[name];
-        println!(
-            "  {} - {} test(s): {}",
-            name,
-            tests.len(),
-            tests.join(", ")
-        );
+        println!("  {} - {} test(s): {}", name, tests.len(), tests.join(", "));
     }
 
     if !gaps.is_empty() {
-        println!("\n⚠️  INTERACTIVE/PARTIAL COVERAGE ({}/{}):", gaps.len(), all_use_cases.len());
+        println!(
+            "\n⚠️  INTERACTIVE/PARTIAL COVERAGE ({}/{}):",
+            gaps.len(),
+            all_use_cases.len()
+        );
         for name in &gaps {
             println!(
                 "  {} - Covered via integration but not automated directly",
@@ -248,6 +238,9 @@ fn all_implemented_use_cases_have_test_coverage() {
     }
 
     println!("\n────────────────────────────────────────────────────────────");
-    println!("✨ Release readiness: {} use-cases with automated coverage", covered.len());
+    println!(
+        "✨ Release readiness: {} use-cases with automated coverage",
+        covered.len()
+    );
     println!("   Ready for v1.0.0 release.\n");
 }

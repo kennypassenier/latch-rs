@@ -144,7 +144,9 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
         let ciphertext = github.pull_file(&remote).await?;
         // Cache encrypted blob to .latch/ for offline commit and subscribe-intent.
         let cached = local_blob_path(&project_root, env_name, &flat);
-        if let Some(p) = cached.parent() { std::fs::create_dir_all(p)?; }
+        if let Some(p) = cached.parent() {
+            std::fs::create_dir_all(p)?;
+        }
         std::fs::write(&cached, &ciphertext)?;
         let plaintext = decrypt(&ciphertext, &key)?;
         write_file!(&local_abs, &plaintext);
@@ -155,7 +157,9 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
         let ciphertext = github.pull_file(&group.remote_blob).await?;
         // Cache group blob to .latch/ so subscribe-intent members can commit offline.
         let cached = local_group_blob_path(&project_root, env_name, &group.name);
-        if let Some(p) = cached.parent() { std::fs::create_dir_all(p)?; }
+        if let Some(p) = cached.parent() {
+            std::fs::create_dir_all(p)?;
+        }
         std::fs::write(&cached, &ciphertext)?;
         let plaintext = decrypt(&ciphertext, &key)?;
 

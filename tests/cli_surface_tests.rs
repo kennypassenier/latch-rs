@@ -24,8 +24,8 @@ fn root_help_lists_expected_commands() {
     assert!(ok, "--help should succeed, stderr={}", err);
 
     for command in [
-        "clone", "login", "init", "commit", "push", "pull", "status", "rotate", "run",
-        "key", "path", "project", "group", "history", "rollback",
+        "clone", "login", "init", "commit", "push", "pull", "status", "rotate", "run", "key",
+        "path", "project", "group", "history", "rollback",
     ] {
         assert!(
             out.contains(command),
@@ -122,7 +122,10 @@ fn clone_offer_emits_json_and_persists_offer_file() {
         .and_then(|x| x.as_str())
         .expect("recipient_public_key string");
 
-    assert!(expires_at > created_at, "offer expiry must be in the future");
+    assert!(
+        expires_at > created_at,
+        "offer expiry must be in the future"
+    );
     assert!(
         !recipient_public_key.is_empty(),
         "recipient_public_key should not be empty"

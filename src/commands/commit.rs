@@ -148,8 +148,8 @@ pub async fn run(env_name: &str) -> Result<()> {
     let key = parse_key(&key_hex)?;
 
     // Load any existing staging manifest so we can preserve other envs.
-    let mut staging = Manifest::load_staging(&project_root)?
-        .unwrap_or_else(|| Manifest::new(&cfg.name, None));
+    let mut staging =
+        Manifest::load_staging(&project_root)?.unwrap_or_else(|| Manifest::new(&cfg.name, None));
 
     let all_files = scan_env_files(&project_root);
     if all_files.is_empty() {
@@ -170,7 +170,10 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     for abs_path in &all_files {
         match read_pragma(abs_path) {
-            Some(group_name) => raw_groups.entry(group_name).or_default().push(abs_path.clone()),
+            Some(group_name) => raw_groups
+                .entry(group_name)
+                .or_default()
+                .push(abs_path.clone()),
             None => standalone_paths.push(abs_path.clone()),
         }
     }
@@ -198,8 +201,7 @@ pub async fn run(env_name: &str) -> Result<()> {
             process_group(group_name, members, &project_root, env_name, &key, &pb).await?
         {
             // Fix up the remote_blob path with the real project name.
-            group.remote_blob =
-                CloneGroup::remote_blob_path(&cfg.name, env_name, group_name);
+            group.remote_blob = CloneGroup::remote_blob_path(&cfg.name, env_name, group_name);
             new_groups.push(group);
         }
         pb.inc(1);

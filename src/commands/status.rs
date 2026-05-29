@@ -88,7 +88,9 @@ pub async fn run(env_name: &str) -> Result<()> {
         };
 
         match &status {
-            FileStatus::Error(msg) => println!("  {} {}  {}  ({})", icon, label, mapping.local_path, msg),
+            FileStatus::Error(msg) => {
+                println!("  {} {}  {}  ({})", icon, label, mapping.local_path, msg)
+            }
             _ => println!("  {} {}  {}", icon, label, mapping.local_path),
         }
 
@@ -149,8 +151,14 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     if any_out_of_sync {
         println!("\nSome files are out of sync.");
-        println!("  Run 'latch push --env {}' to push local changes.", env_name);
-        println!("  Run 'latch pull --env {}' to pull remote changes.", env_name);
+        println!(
+            "  Run 'latch push --env {}' to push local changes.",
+            env_name
+        );
+        println!(
+            "  Run 'latch pull --env {}' to pull remote changes.",
+            env_name
+        );
     } else {
         println!("\nAll files are in sync.");
     }
