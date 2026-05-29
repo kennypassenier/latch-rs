@@ -35,7 +35,7 @@ pub struct CommitSummary {
     /// Commit message (may be multi-line; use `.lines().next()` for the title).
     pub message: String,
     /// Author display name.
-        #[allow(dead_code)]
+    #[allow(dead_code)]
     pub author: String,
     /// ISO 8601 commit date string (e.g. `"2026-05-28T14:32:01Z"`).
     pub date: String,

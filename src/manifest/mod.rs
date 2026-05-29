@@ -101,7 +101,7 @@ impl Manifest {
     }
 
     /// Find a clone group by name and env.
-        #[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn get_group(&self, name: &str, env: &str) -> Option<&CloneGroup> {
         self.clone_groups
             .iter()
@@ -109,7 +109,7 @@ impl Manifest {
     }
 
     /// Return the clone group that `local_path` belongs to, if any.
-        #[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn group_for_member(&self, local_path: &str) -> Option<&CloneGroup> {
         self.clone_groups
             .iter()
