@@ -26,3 +26,27 @@ pub trait RemoteStorage: Send + Sync {
     #[allow(dead_code)]
     async fn list_files(&self, prefix: &str) -> Result<Vec<String>>;
 }
+
+/// Summary of a single commit returned by [`RemoteStorage::list_commits`].
+#[derive(Debug, Clone)]
+pub struct CommitSummary {
+    /// Full commit SHA.
+    pub sha: String,
+    /// Commit message (may be multi-line; use `.lines().next()` for the title).
+    pub message: String,
+    /// Author display name.
+    pub author: String,
+    /// ISO 8601 commit date string (e.g. `"2026-05-28T14:32:01Z"`).
+    pub date: String,
+}
+
+/// Extended trait methods needed for history and rollback.
+#[async_trait]
+pub trait RemoteStorageExt: RemoteStorage {
+    /// List the most recent commits that touched `path`, newest first.
+    async fn list_commits(&self, path: &str, limit: usize) -> Result<Vec<CommitSummary>>;
+
+    /// Download the raw bytes of a file at `path` as it existed at `git_ref`
+    /// (a commit SHA, branch name, or tag).
+    async fn pull_file_at_ref(&self, path: &str, git_ref: &str) -> Result<Vec<u8>>;
+}

@@ -189,24 +189,24 @@ fn kdf_pinned_vector() {
 
 #[test]
 fn flatten_root_env() {
-    assert_eq!(flatten_path(Path::new(".env")), "env");
+    assert_eq!(flatten_path(Path::new(".env")), ".env");
 }
 
 #[test]
 fn flatten_one_level() {
-    assert_eq!(flatten_path(Path::new("backend/.env")), "backend.env");
+    assert_eq!(flatten_path(Path::new("backend/.env")), "backend__.env");
 }
 
 #[test]
 fn flatten_two_levels() {
-    assert_eq!(flatten_path(Path::new("src/api/.env")), "src.api.env");
+    assert_eq!(flatten_path(Path::new("src/api/.env")), "src__api__.env");
 }
 
 #[test]
 fn flatten_env_variant() {
     assert_eq!(
         flatten_path(Path::new("frontend/.env.local")),
-        "frontend.env.local"
+        "frontend__.env.local"
     );
 }
 
@@ -214,7 +214,7 @@ fn flatten_env_variant() {
 fn flatten_env_staging_variant() {
     assert_eq!(
         flatten_path(Path::new("services/api/.env.staging")),
-        "services.api.env.staging"
+        "services__api__.env.staging"
     );
 }
 
@@ -222,12 +222,12 @@ fn flatten_env_staging_variant() {
 #[test]
 fn remote_path_format_is_stable() {
     assert_eq!(
-        remote_path("my-app", "prod", "backend.env"),
-        "my-app/prod/backend.env.enc"
+        remote_path("my-app", "prod", "backend__.env"),
+        "my-app/prod/backend__.env.enc"
     );
     assert_eq!(
-        remote_path("org-project", "staging", "services.api.env"),
-        "org-project/staging/services.api.env.enc"
+        remote_path("org-project", "staging", "services__api__.env"),
+        "org-project/staging/services__api__.env.enc"
     );
 }
 

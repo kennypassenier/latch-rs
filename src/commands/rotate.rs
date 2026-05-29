@@ -116,7 +116,7 @@ pub async fn run() -> Result<()> {
     println!("\n  New key (store this safely!):\n  {}\n", new_key_hex);
     println!(
         "⚠  All team members must update their local keyring with the new key\n   \
-           before running 'latch load'."
+           before running 'latch pull'."
     );
 
     Ok(())

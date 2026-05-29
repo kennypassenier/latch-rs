@@ -199,14 +199,14 @@ fn scan_skips_latch_config_directory() {
 #[test]
 fn flatten_fixture_paths() {
     let cases = [
-        (".env", "env"),
-        ("backend/.env", "backend.env"),
-        ("frontend/.env", "frontend.env"),
-        ("services/api/.env", "services.api.env"),
-        ("services/api/.env.staging", "services.api.env.staging"),
-        ("services/worker/.env", "services.worker.env"),
-        ("apps/web/.env", "apps.web.env"),
-        ("src/config/.env", "src.config.env"),
+        (".env", ".env"),
+        ("backend/.env", "backend__.env"),
+        ("frontend/.env", "frontend__.env"),
+        ("services/api/.env", "services__api__.env"),
+        ("services/api/.env.staging", "services__api__.env.staging"),
+        ("services/worker/.env", "services__worker__.env"),
+        ("apps/web/.env", "apps__web__.env"),
+        ("src/config/.env", "src__config__.env"),
     ];
     for (input, expected) in cases {
         assert_eq!(
@@ -350,7 +350,7 @@ async fn save_then_export_roundtrip_single_file() {
 
     // Simulate save: encrypt and push
     let ciphertext = encrypt(plaintext, &key).unwrap();
-    let flat = "env";
+    let flat = ".env";
     let rpath = remote_path(project, env, flat);
     storage
         .push_file(&rpath, &ciphertext, "save")
@@ -459,7 +459,7 @@ async fn key_rotation_makes_old_key_invalid() {
     let env = "dev";
 
     let plaintext = b"ROTATE_ME=sensitive\n";
-    let flat = "env";
+    let flat = ".env";
     let rpath = remote_path(project, env, flat);
 
     // Save with old key
@@ -495,22 +495,22 @@ async fn key_rotation_all_files_reencrypted() {
     let env = "dev";
 
     let files = [
-        ("env", b"A=1\n" as &[u8]),
-        ("backend.env", b"B=2\n"),
-        ("frontend.env", b"C=3\n"),
+        (".env", b"A=1\n" as &[u8], ".env"),
+        ("backend/.env", b"B=2\n", "backend__.env"),
+        ("frontend/.env", b"C=3\n", "frontend__.env"),
     ];
 
     // Save all with old key + build manifest
     let mut manifest = Manifest::new(project, None);
     let mut file_mappings = Vec::new();
-    for (flat, content) in &files {
+    for (local_path, content, flat) in &files {
         let rpath = remote_path(project, env, flat);
         storage
             .push_file(&rpath, &encrypt(content, &old_key).unwrap(), "save")
             .await
             .unwrap();
         file_mappings.push(FileMapping {
-            local_path: format!(".{}.env", flat.trim_end_matches(".env")),
+            local_path: (*local_path).to_string(),
         });
     }
     manifest.set_env(env, file_mappings);
@@ -524,7 +524,7 @@ async fn key_rotation_all_files_reencrypted() {
         .unwrap();
 
     // Rotate: re-encrypt every file
-    for (flat, _) in &files {
+    for (_, _, flat) in &files {
         let rpath = remote_path(project, env, flat);
         let ct = storage.pull_file(&rpath).await.unwrap();
         let pt = decrypt(&ct, &old_key).unwrap();
@@ -535,7 +535,7 @@ async fn key_rotation_all_files_reencrypted() {
     }
 
     // Verify all files are inaccessible with old key and accessible with new key
-    for (flat, expected) in &files {
+    for (_, expected, flat) in &files {
         let rpath = remote_path(project, env, flat);
         let ct = storage.pull_file(&rpath).await.unwrap();
         assert!(
@@ -638,7 +638,7 @@ async fn multi_key_save_export_per_env() {
     let prod_content = b"ENV=prod\nSECRET=prod-secret\n";
 
     // Save dev
-    let dev_flat = "env";
+    let dev_flat = ".env";
     storage
         .push_file(
             &remote_path(project, "dev", dev_flat),
@@ -708,7 +708,7 @@ async fn run_decrypts_and_parses_env_vars() {
     let env = "dev";
 
     let content = "SECRET=mysecret\nPORT=3000\n# comment\nDB_URL=postgres://localhost/db\n";
-    let flat = "env";
+    let flat = ".env";
     let rpath = remote_path(project, env, flat);
 
     storage
@@ -744,7 +744,7 @@ async fn run_expands_template_vars_before_inject() {
     let content = "DB_HOST=localhost\nDB_PORT=5432\nDB_NAME=myapp\nDATABASE_URL=postgres://${DB_HOST}:${DB_PORT}/${DB_NAME}\n";
     storage
         .push_file(
-            &remote_path(project, env, "env"),
+            &remote_path(project, env, ".env"),
             &encrypt(content.as_bytes(), &key).unwrap(),
             "save",
         )
@@ -752,7 +752,7 @@ async fn run_expands_template_vars_before_inject() {
         .unwrap();
 
     let ct = storage
-        .pull_file(&remote_path(project, env, "env"))
+        .pull_file(&remote_path(project, env, ".env"))
         .await
         .unwrap();
     let pt = decrypt(&ct, &key).unwrap();
@@ -818,14 +818,14 @@ async fn passphrase_key_save_export_roundtrip() {
 
     let ct = encrypt(content, &key).unwrap();
     storage
-        .push_file(&remote_path(project, env, "env"), &ct, "save")
+        .push_file(&remote_path(project, env, ".env"), &ct, "save")
         .await
         .unwrap();
 
     // Later: re-derive key from same passphrase + salt
     let key2 = derive_key(passphrase, &salt).unwrap();
     let ct2 = storage
-        .pull_file(&remote_path(project, env, "env"))
+        .pull_file(&remote_path(project, env, ".env"))
         .await
         .unwrap();
     let pt2 = decrypt(&ct2, &key2).unwrap();

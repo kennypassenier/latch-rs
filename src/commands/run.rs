@@ -37,7 +37,7 @@ pub async fn run(env_name: &str, program: &str, args: &[String]) -> Result<()> {
     let mappings = manifest.get_env(env_name);
     if mappings.is_empty() {
         anyhow::bail!(
-            "No files tracked for env '{}'. Run 'latch save --env {}' first.",
+            "No files tracked for env '{}'. Run 'latch push --env {}' first.",
             env_name,
             env_name
         );

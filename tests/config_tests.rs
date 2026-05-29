@@ -1,3 +1,4 @@
+use latch_rs::config::global::{GlobalConfig, ProjectEntry};
 use latch_rs::config::project::ProjectConfig;
 use latch_rs::discovery::{flatten_path, generate_example, scan_env_files};
 use latch_rs::manifest::Manifest;
@@ -74,14 +75,14 @@ fn scanner_respects_latchignore() {
 
 #[test]
 fn flatten_single_level() {
-    assert_eq!(flatten_path(Path::new("backend/.env")), "backend.env");
+    assert_eq!(flatten_path(Path::new("backend/.env")), "backend__.env");
 }
 
 #[test]
 fn flatten_multi_level() {
     assert_eq!(
         flatten_path(Path::new("src/api/service/.env")),
-        "src.api.service.env"
+        "src__api__service__.env"
     );
 }
 
@@ -89,13 +90,13 @@ fn flatten_multi_level() {
 fn flatten_env_variant() {
     assert_eq!(
         flatten_path(Path::new("frontend/.env.local")),
-        "frontend.env.local"
+        "frontend__.env.local"
     );
 }
 
 #[test]
 fn flatten_root_env() {
-    assert_eq!(flatten_path(Path::new(".env")), "env");
+    assert_eq!(flatten_path(Path::new(".env")), ".env");
 }
 
 // ── .env.example generation ───────────────────────────────────────────────────
@@ -136,4 +137,37 @@ fn manifest_roundtrip() {
     assert_eq!(restored.kdf_salt, Some("abc123==".to_string()));
     assert_eq!(restored.get_env("dev").len(), 2);
     assert_eq!(restored.get_env("prod").len(), 0);
+}
+
+// ── Global config model behavior ─────────────────────────────────────────────
+
+#[test]
+fn global_config_upsert_replaces_existing_project() {
+    let mut g = GlobalConfig::default();
+    g.upsert_project(ProjectEntry {
+        name: "myapp".to_string(),
+        secrets_repo: "org/secrets".to_string(),
+        default_env: "dev".to_string(),
+        key_hex: None,
+        github_pat: None,
+    });
+    g.upsert_project(ProjectEntry {
+        name: "myapp".to_string(),
+        secrets_repo: "org/secrets-2".to_string(),
+        default_env: "prod".to_string(),
+        key_hex: Some("abcd".to_string()),
+        github_pat: None,
+    });
+
+    assert_eq!(g.projects.len(), 1, "upsert should replace, not append");
+    let p = g.get_project("myapp").expect("project exists");
+    assert_eq!(p.secrets_repo, "org/secrets-2");
+    assert_eq!(p.default_env, "prod");
+    assert_eq!(p.key_hex.as_deref(), Some("abcd"));
+}
+
+#[test]
+fn global_config_get_project_none_for_unknown() {
+    let g = GlobalConfig::default();
+    assert!(g.get_project("unknown").is_none());
 }

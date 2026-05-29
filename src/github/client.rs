@@ -1,4 +1,4 @@
-use super::RemoteStorage;
+use super::{CommitSummary, RemoteStorage, RemoteStorageExt};
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use base64::Engine;
@@ -37,14 +37,32 @@ struct TreeResponse {
     tree: Vec<TreeItem>,
 }
 
-// ── Request body ──────────────────────────────────────────────────────────────
+#[derive(Deserialize)]
+struct CommitItem {
+    sha: String,
+    commit: CommitDetail,
+}
+
+#[derive(Deserialize)]
+struct CommitDetail {
+    message: String,
+    author: CommitAuthorInfo,
+}
+
+#[derive(Deserialize)]
+struct CommitAuthorInfo {
+    name: String,
+    date: String,
+}
+
+// ── Request bodies ───────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct PutBody<'a> {
     message: &'a str,
-    content: String, // base64-encoded
+    content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sha: Option<&'a str>, // required when updating an existing file
+    sha: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -56,9 +74,6 @@ struct DeleteBody<'a> {
 // ── Client ────────────────────────────────────────────────────────────────────
 
 /// Thin wrapper around the GitHub Contents API.
-///
-/// Uses `Authorization: Bearer <pat>` with the required `Accept` and
-/// `X-GitHub-Api-Version` headers on every request.
 pub struct GitHubClient {
     client: Client,
     owner: String,
@@ -67,7 +82,7 @@ pub struct GitHubClient {
 }
 
 impl GitHubClient {
-    /// `secrets_repo` should be in `"owner/repo"` format.
+    /// `secrets_repo` should be in `owner/repo` format.
     pub fn new(secrets_repo: &str, pat: &str) -> Result<Self> {
         let (owner, repo) = secrets_repo.split_once('/').ok_or_else(|| {
             anyhow::anyhow!("secrets_repo must be 'owner/repo', got '{}'", secrets_repo)
@@ -93,11 +108,15 @@ impl GitHubClient {
         )
     }
 
+    fn commits_url(&self) -> String {
+        format!("{}/repos/{}/{}/commits", API_BASE, self.owner, self.repo)
+    }
+
     #[allow(dead_code)]
-    fn tree_url(&self, branch: &str) -> String {
+    fn tree_url(&self, git_ref: &str) -> String {
         format!(
             "{}/repos/{}/{}/git/trees/{}?recursive=1",
-            API_BASE, self.owner, self.repo, branch
+            API_BASE, self.owner, self.repo, git_ref
         )
     }
 
@@ -163,7 +182,6 @@ impl RemoteStorage for GitHubClient {
             .json()
             .await
             .context("Parsing GitHub contents response")?;
-        // GitHub base64 content includes newlines every 60 chars – strip them.
         let clean = body.content.replace(['\n', '\r'], "");
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&clean)
@@ -228,8 +246,6 @@ impl RemoteStorage for GitHubClient {
     }
 
     async fn list_files(&self, prefix: &str) -> Result<Vec<String>> {
-        // Use the git trees API with recursive=1 to list all files.
-        // We fetch the default branch tree.  Prefix filtering is done client-side.
         let url = self.tree_url("HEAD");
         debug!("TREE {}", url);
         let resp = self
@@ -256,5 +272,82 @@ impl RemoteStorage for GitHubClient {
             .map(|item| item.path)
             .collect();
         Ok(files)
+    }
+}
+
+#[async_trait]
+impl RemoteStorageExt for GitHubClient {
+    async fn list_commits(&self, path: &str, limit: usize) -> Result<Vec<CommitSummary>> {
+        let url = self.commits_url();
+        debug!("COMMITS {} (limit={})", path, limit);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", self.auth_header())
+            .header("Accept", ACCEPT_HEADER)
+            .header("X-GitHub-Api-Version", API_VERSION_HEADER)
+            .query(&[("path", path), ("per_page", &limit.to_string())])
+            .send()
+            .await
+            .context("GitHub commits request failed")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            bail!("GitHub commits returned {}: {}", status, text);
+        }
+
+        let items: Vec<CommitItem> = resp.json().await.context("Parsing GitHub commits")?;
+        let summaries = items
+            .into_iter()
+            .map(|item| CommitSummary {
+                sha: item.sha,
+                message: item.commit.message,
+                author: item.commit.author.name,
+                date: item.commit.author.date,
+            })
+            .collect();
+        Ok(summaries)
+    }
+
+    async fn pull_file_at_ref(&self, path: &str, git_ref: &str) -> Result<Vec<u8>> {
+        let url = self.contents_url(path);
+        debug!("GET {} @{}", path, git_ref);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", self.auth_header())
+            .header("Accept", ACCEPT_HEADER)
+            .header("X-GitHub-Api-Version", API_VERSION_HEADER)
+            .query(&[("ref", git_ref)])
+            .send()
+            .await
+            .context("GitHub contents-at-ref request failed")?;
+
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            bail!("File '{}' not found at ref '{}'", path, git_ref);
+        }
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            bail!(
+                "GitHub GET {}@{} returned {}: {}",
+                path,
+                git_ref,
+                status,
+                text
+            );
+        }
+
+        let body: ContentsResponse = resp.json().await.context("Parsing GitHub contents")?;
+        let clean: String = body
+            .content
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&clean)
+            .context("Base64-decoding GitHub file content")?;
+        Ok(bytes)
     }
 }

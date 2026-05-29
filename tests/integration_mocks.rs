@@ -7,6 +7,7 @@ use std::{
 };
 
 use latch_rs::github::RemoteStorage;
+use latch_rs::github::{CommitSummary, RemoteStorageExt};
 
 // ── Mock implementation ───────────────────────────────────────────────────────
 
@@ -77,6 +78,19 @@ impl RemoteStorage for MockStorage {
             .filter(|k| k.starts_with(prefix))
             .cloned()
             .collect())
+    }
+}
+
+#[async_trait]
+impl RemoteStorageExt for MockStorage {
+    /// Test stub: returns an empty commit history.
+    async fn list_commits(&self, _path: &str, _limit: usize) -> Result<Vec<CommitSummary>> {
+        Ok(vec![])
+    }
+
+    /// Test stub: delegates to pull_file (ignores the ref).
+    async fn pull_file_at_ref(&self, path: &str, _git_ref: &str) -> Result<Vec<u8>> {
+        self.pull_file(path).await
     }
 }
 
@@ -172,5 +186,5 @@ async fn encrypt_push_pull_decrypt_roundtrip() {
     let decrypted = decrypt(&pulled, &key).unwrap();
 
     assert_eq!(plaintext.to_vec(), decrypted);
-    assert_eq!(remote, "myapp/dev/backend.env.enc");
+    assert_eq!(remote, "myapp/dev/backend__.env.enc");
 }
