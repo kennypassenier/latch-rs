@@ -25,7 +25,7 @@ fn root_help_lists_expected_commands() {
 
     for command in [
         "clone", "login", "init", "commit", "push", "pull", "status", "rotate", "run", "key",
-        "path", "project", "group", "history", "rollback",
+        "path", "project", "group", "history", "rollback", "update",
     ] {
         assert!(
             out.contains(command),
@@ -78,6 +78,7 @@ fn subcommand_help_pages_are_accessible() {
         ["group", "--help"],
         ["history", "--help"],
         ["rollback", "--help"],
+        ["update", "--help"],
     ];
 
     for args in cases {

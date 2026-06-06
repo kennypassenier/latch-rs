@@ -160,6 +160,9 @@ enum Commands {
         #[arg(long, conflicts_with = "steps")]
         to: Option<String>,
     },
+
+    /// Download and install the latest Latch release binary.
+    Update,
 }
 
 #[derive(Subcommand)]
@@ -328,5 +331,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Rollback { env, steps, to } => {
             commands::rollback::run(&env, to.as_deref(), steps).await
         }
+        Commands::Update => commands::update::run().await,
     }
 }

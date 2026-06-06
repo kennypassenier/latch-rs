@@ -178,10 +178,17 @@ pub async fn use_in_current_dir(repo: Option<&str>, env_override: Option<&str>) 
     target_cfg.save_in(&cwd)?;
 
     // Best-effort: if PAT is not yet in keyring for this project, store it.
+    // If keyring write/read isn't usable in this session (common on headless
+    // systems), persist fallback PAT in global config below.
     let keyring = KeyringProvider;
-    if keyring.get_pat(&project_name).is_none() {
-        let _ = keyring.set_credentials(&project_name, Some(&pat), None);
-    }
+    let pat_available_in_keyring = if keyring.get_pat(&project_name).is_some() {
+        true
+    } else {
+        match keyring.set_credentials(&project_name, Some(&pat), None) {
+            Ok(()) => keyring.get_pat(&project_name).as_deref() == Some(pat.as_str()),
+            Err(_) => false,
+        }
+    };
 
     let existing = global
         .get_project(&project_name)
@@ -195,12 +202,18 @@ pub async fn use_in_current_dir(repo: Option<&str>, env_override: Option<&str>) 
         });
 
     let mut updated = global;
+    let fallback_pat = if pat_available_in_keyring {
+        existing.github_pat
+    } else {
+        Some(pat.clone())
+    };
+
     updated.upsert_project(ProjectEntry {
         name: project_name.clone(),
         secrets_repo: selected_repo.clone(),
         default_env: selected_env.clone(),
         key_hex: existing.key_hex,
-        github_pat: existing.github_pat,
+        github_pat: fallback_pat,
     });
     let _ = updated.save();
 

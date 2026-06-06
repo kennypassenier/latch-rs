@@ -49,5 +49,7 @@ install-hooks:
 	@echo "Git hooks installed. Commits now run local CI preflight via pre-commit."
 
 build: build-linux
+	@rm -f ./latch && ln -s target/debug/latch ./latch
+	@echo "Symlinked: ./latch -> target/debug/latch"
 	@./target/x86_64-unknown-linux-gnu/release/latch path add
 	@echo "Installed and registered: $$HOME/.local/bin/latch"

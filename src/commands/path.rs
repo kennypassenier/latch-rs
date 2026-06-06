@@ -86,7 +86,7 @@ pub async fn status() -> Result<()> {
     Ok(())
 }
 
-fn install_target() -> Result<PathBuf> {
+pub(crate) fn install_target() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let dir = dirs::data_local_dir()
@@ -106,7 +106,7 @@ fn install_target() -> Result<PathBuf> {
     }
 }
 
-fn copy_executable(from: &Path, to: &Path) -> Result<()> {
+pub(crate) fn copy_executable(from: &Path, to: &Path) -> Result<()> {
     fs::copy(from, to)
         .with_context(|| format!("Copying {} -> {}", from.display(), to.display()))?;
 
@@ -126,7 +126,7 @@ fn path_contains(dir: &Path) -> bool {
     env::split_paths(&env::var_os("PATH").unwrap_or_default()).any(|p| p == dir)
 }
 
-fn configure_user_path_add(install_dir: &Path) -> Result<()> {
+pub(crate) fn configure_user_path_add(install_dir: &Path) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         windows_update_user_path(install_dir, true)?;
