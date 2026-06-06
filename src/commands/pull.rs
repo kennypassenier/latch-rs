@@ -12,7 +12,7 @@ use crate::{
     manifest::Manifest,
 };
 
-pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
+pub async fn run(env_name: &str, dry_run: bool, sparse: bool) -> Result<()> {
     let cwd = env::current_dir()?;
     let (cfg, project_root) = ProjectConfig::find_and_load(&cwd)?;
 
@@ -48,8 +48,10 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
     }
 
     if dry_run {
+        let mode = if sparse { "sparse" } else { "full" };
         println!(
-            "[dry-run] Would pull {} standalone file(s) + {} group(s) for env '{}' into {}",
+            "[dry-run][{}] Would pull {} standalone file(s) + {} group(s) for env '{}' into {}",
+            mode,
             mappings.len(),
             groups.len(),
             env_name,
@@ -59,7 +61,12 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
             let rel = &m.local_path;
             let flat = flatten_path(Path::new(rel));
             let remote = remote_path(&cfg.name, env_name, &flat);
-            println!("  {} <- {}", rel, remote);
+            let local_abs = project_root.join(rel);
+            if should_skip_for_sparse(&local_abs, sparse) {
+                println!("  {} <- {} [skip: parent directory missing]", rel, remote);
+            } else {
+                println!("  {} <- {}", rel, remote);
+            }
         }
         for g in &groups {
             println!(
@@ -68,6 +75,14 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
                 g.members.len(),
                 g.remote_blob
             );
+            if sparse {
+                for member in &g.members {
+                    let local_abs = project_root.join(member);
+                    if should_skip_for_sparse(&local_abs, true) {
+                        println!("    - {} [skip: parent directory missing]", member);
+                    }
+                }
+            }
         }
         return Ok(());
     }
@@ -80,6 +95,9 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
         cfg.secrets_repo,
         project_root.display()
     );
+    if sparse {
+        println!("Sparse mode enabled: only existing directories will receive .env files.");
+    }
 
     let pb = ProgressBar::new(total as u64);
     pb.set_style(
@@ -149,6 +167,17 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
         }
         std::fs::write(&cached, &ciphertext)?;
         let plaintext = decrypt(&ciphertext, &key)?;
+        if should_skip_for_sparse(&local_abs, sparse) {
+            pb.suspend(|| {
+                println!(
+                    "  skipping {} (parent directory missing)",
+                    local_abs.display()
+                );
+            });
+            skipped += 1;
+            pb.inc(1);
+            continue;
+        }
         write_file!(&local_abs, &plaintext);
     }
 
@@ -166,6 +195,17 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
         for member_path in &group.members {
             let local_abs = project_root.join(member_path);
             pb.set_message(member_path.clone());
+            if should_skip_for_sparse(&local_abs, sparse) {
+                pb.suspend(|| {
+                    println!(
+                        "  skipping {} (parent directory missing)",
+                        local_abs.display()
+                    );
+                });
+                skipped += 1;
+                pb.inc(1);
+                continue;
+            }
             write_file!(&local_abs, &plaintext);
         }
     }
@@ -177,4 +217,15 @@ pub async fn run(env_name: &str, dry_run: bool) -> Result<()> {
     // and subscribe-intent clone-group members can resolve from the cache.
     manifest.save_staging(&project_root)?;
     Ok(())
+}
+
+fn should_skip_for_sparse(local_abs: &Path, sparse: bool) -> bool {
+    if !sparse {
+        return false;
+    }
+
+    match local_abs.parent() {
+        Some(parent) => !parent.exists(),
+        None => false,
+    }
 }

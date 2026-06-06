@@ -227,7 +227,7 @@ pub async fn use_in_current_dir(repo: Option<&str>, env_override: Option<&str>) 
         .default(true)
         .interact()?;
     if do_export {
-        crate::commands::pull::run(&selected_env, false).await?;
+        crate::commands::pull::run(&selected_env, false, false).await?;
     }
 
     Ok(())

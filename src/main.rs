@@ -75,6 +75,14 @@ enum Commands {
         /// Preview what would be written without touching the filesystem.
         #[arg(long)]
         dry_run: bool,
+
+        /// Only write files whose parent directory already exists.
+        #[arg(long)]
+        sparse: bool,
+
+        /// Optional pull mode alias, e.g. `latch pull sparse`.
+        #[arg(value_enum)]
+        mode: Option<PullMode>,
     },
 
     /// Show sync status (local vs remote) for each tracked .env file.
@@ -243,6 +251,12 @@ enum CloneCommands {
     },
 }
 
+#[derive(clap::ValueEnum, Clone)]
+enum PullMode {
+    /// Only write files whose parent directory already exists.
+    Sparse,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -299,7 +313,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init => commands::init::run().await,
         Commands::Commit { env } => commands::commit::run(&env).await,
         Commands::Push { env } => commands::push::run(&env).await,
-        Commands::Pull { env, dry_run } => commands::pull::run(&env, dry_run).await,
+        Commands::Pull {
+            env,
+            dry_run,
+            sparse,
+            mode,
+        } => {
+            let sparse_mode = sparse || matches!(mode, Some(PullMode::Sparse));
+            commands::pull::run(&env, dry_run, sparse_mode).await
+        }
         Commands::Status { env } => commands::status::run(&env).await,
         Commands::Rotate => commands::rotate::run().await,
         Commands::Run { env, command } => {

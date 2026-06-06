@@ -463,13 +463,15 @@ latch push --env prod
 Pull ciphertext from the secrets repository, cache it to `.latch/`, and decrypt it to local `.env` files.
 
 ```
-latch pull [--env <env>] [--dry-run]
+latch pull [--env <env>] [--dry-run] [--sparse]
+latch pull sparse [--env <env>] [--dry-run]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--env` / `-e` | `dev` | Environment to pull from. |
 | `--dry-run` | off | Print what would be written without touching the filesystem. |
+| `--sparse` | off | Only write `.env` files whose parent directory already exists (useful for sparse checkouts). |
 
 If a local `.env` file already exists and its content differs from the remote, Latch shows an inline diff and asks for confirmation before overwriting.
 
@@ -488,6 +490,12 @@ latch pull --env prod --dry-run
 
 # Pull staging secrets
 latch pull --env staging
+
+# Sparse pull (only existing directories get files)
+latch pull --sparse
+
+# Equivalent sparse mode alias
+latch pull sparse
 ```
 
 ---
