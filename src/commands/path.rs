@@ -23,12 +23,31 @@ pub async fn add() -> Result<()> {
         fs::create_dir_all(parent).with_context(|| format!("Creating {}", parent.display()))?;
     }
 
-    copy_executable(&current, &target)?;
+    if paths_refer_to_same_file(&current, &target) {
+        println!("Latch is already installed at {}", target.display());
+    } else {
+        copy_executable(&current, &target)?;
+        println!("Installed Latch to {}", target.display());
+    }
     configure_user_path_add(target.parent().expect("install target has parent"))?;
 
-    println!("Installed Latch to {}", target.display());
     println!("Open a new shell, or reload your shell profile, before running 'latch'.");
     Ok(())
+}
+
+fn paths_refer_to_same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+
+    let Ok(a_abs) = fs::canonicalize(a) else {
+        return false;
+    };
+    let Ok(b_abs) = fs::canonicalize(b) else {
+        return false;
+    };
+
+    a_abs == b_abs
 }
 
 pub async fn remove() -> Result<()> {
