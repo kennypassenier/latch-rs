@@ -117,15 +117,15 @@ async fn download_and_extract_binary(client: &Client, asset_url: &str) -> Result
         bail!("Release download failed with {}: {}", status, body);
     }
 
-    let archive_bytes = resp
-        .bytes()
-        .await
-        .context("Reading release archive body")?;
+    let archive_bytes = resp.bytes().await.context("Reading release archive body")?;
 
     let gz = flate2::read::GzDecoder::new(&archive_bytes[..]);
     let mut archive = tar::Archive::new(gz);
 
-    for entry in archive.entries().context("Reading release archive entries")? {
+    for entry in archive
+        .entries()
+        .context("Reading release archive entries")?
+    {
         let mut entry = entry.context("Reading release archive entry")?;
         let path = entry.path().context("Reading entry path")?;
         if path
@@ -165,7 +165,7 @@ fn parse_repository(url: &str) -> Result<(String, String)> {
 fn target_asset_name() -> Result<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        return Ok("latch-linux-x86_64.tar.gz");
+        Ok("latch-linux-x86_64.tar.gz")
     }
 
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
