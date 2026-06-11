@@ -114,19 +114,22 @@ impl FallbackChain {
         let env_provider = EnvVarProvider;
         let mut out: Vec<(String, String)> = Vec::new();
 
-        // Prefer machine-global key material for deterministic cross-host behavior.
-        if let Some(k) = KeyringProvider::get_raw(GLOBAL_KEY_SLOT) {
-            out.push(("keyring:global.key".to_string(), k));
+        // Explicit env var remains available for CI and one-shot overrides.
+        if let Some(k) = env_provider.get_key(&self.project) {
+            out.push(("env:LATCH_KEY".to_string(), k));
         }
+
+        // Durable global config fallback is preferred over keyring to avoid stale
+        // keyring entries silently overriding a freshly logged-in key.
         if let Ok(global) = GlobalConfig::load() {
             if let Some(k) = global.global_key_hex {
                 out.push(("config:global_key_hex".to_string(), k));
             }
         }
 
-        // Explicit env var remains available for CI and one-shot overrides.
-        if let Some(k) = env_provider.get_key(&self.project) {
-            out.push(("env:LATCH_KEY".to_string(), k));
+        // Keyring is still considered, but after explicit/env and config values.
+        if let Some(k) = KeyringProvider::get_raw(GLOBAL_KEY_SLOT) {
+            out.push(("keyring:global.key".to_string(), k));
         }
 
         if let Some(env_name) = env {

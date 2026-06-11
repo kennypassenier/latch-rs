@@ -50,9 +50,12 @@ pub async fn run(args: LoginArgs) -> Result<()> {
         bail!("Secrets repo must be in 'owner/repo' format, e.g. acme/secrets");
     }
 
-    let pat_keyring_ok = set_global_pat(&pat).is_ok();
-    let key_keyring_ok = set_global_key(&key_hex).is_ok();
-    let repo_keyring_ok = set_global_secrets_repo(&repo).is_ok();
+    let pat_keyring_ok = set_global_pat(&pat).is_ok()
+        && KeyringProvider::get_raw("github.pat").as_deref() == Some(pat.as_str());
+    let key_keyring_ok = set_global_key(&key_hex).is_ok()
+        && KeyringProvider::get_raw("global.key").as_deref() == Some(key_hex.as_str());
+    let repo_keyring_ok = set_global_secrets_repo(&repo).is_ok()
+        && KeyringProvider::get_raw("github.secrets_repo").as_deref() == Some(repo.as_str());
 
     // Durable fallback for keyring-less environments (LXC/headless hosts).
     let mut global = GlobalConfig::load()?;
