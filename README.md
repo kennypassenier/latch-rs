@@ -140,9 +140,16 @@ latch login
 
 Prompts for:
 1. **GitHub PAT** — Your personal access token (hidden input)
-2. **Default secrets repo** — Format: `owner/repo` (e.g., `acme-corp/secrets`)
+2. **Global encryption key** — 64-char hex or 44-char base64 key used to encrypt/decrypt
+3. **Default secrets repo** — Format: `owner/repo` (defaults to `kennypassenier/secrets`)
 
-Credentials are stored securely in your OS keyring. If the keyring is unavailable (headless CI), use environment variables instead:
+You can also run non-interactively:
+
+```bash
+latch login -PAT ghp_xxx -KEY 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+Credentials are stored in the OS keyring when available and always written to `~/.latch/config.toml` as a fallback for keyring-limited environments (for example LXC containers). If needed, environment variables still work:
 
 ```bash
 export LATCH_PAT=gh_your_token_here
@@ -346,15 +353,16 @@ Security notes:
 
 ### latch login
 
-Store global credentials in keyring.
+Store global credentials (PAT + KEY + default repo).
 
 ```
-latch login
+latch login [--PAT <token>] [--KEY <key>] [--REPO <owner/repo>]
 ```
 
 Prompts for:
 1. GitHub PAT
-2. Default secrets repo (`owner/repo`)
+2. Global encryption key
+3. Default secrets repo (`owner/repo`, default `kennypassenier/secrets`)
 
 ---
 
@@ -439,10 +447,12 @@ latch push [--env <env>]
 | `--env` / `-e` | `dev` | Environment label to upload. |
 
 **What it does:**
-1. Reads `.latch/staging.json` to find what files are staged for the env. Errors clearly if nothing is staged.
+1. Reads `.latch/staging.json` to find what files are staged for the env.
 2. Reads each `.latch/<env>/<flat-name>.enc` blob and uploads it to `<project>/<env>/<flat-name>.enc` in the secrets repository.
 3. Removes stale remote encrypted files that were previously tracked but are no longer staged.
 4. Updates the remote manifest.
+
+If you deleted `.env` files locally and then ran `latch commit`, `latch push` will remove those stale encrypted files from the secrets repo as part of step 3.
 
 **Alias:** `save`
 
@@ -670,10 +680,11 @@ For each project, Latch looks for credentials in this order:
 
 1. **OS keyring** (env-specific slot) — `<project>.key.<env>` *(key only, when `--env` is supplied)*
 2. **OS keyring** (project-wide slot) — `<project>.key`
-3. **OS keyring** (global slots) — `github.pat` and `github.secrets_repo`
-4. **OS keyring** (legacy project PAT slot) — `<project>.pat`
-5. **Environment variables** — `LATCH_KEY` / `LATCH_PAT`
-6. **`~/.latch/config.toml`** — `key_hex` / `github_pat` fields
+3. **OS keyring** (global key slot) — `global.key`
+4. **OS keyring** (global PAT/repo slots) — `github.pat` and `github.secrets_repo`
+5. **OS keyring** (legacy project PAT slot) — `<project>.pat`
+6. **Environment variables** — `LATCH_KEY` / `LATCH_PAT`
+7. **`~/.latch/config.toml`** — `global_key_hex` / `global_pat` / `default_secrets_repo` / project fallback fields
 
 The first non-empty value wins.
 
@@ -698,6 +709,10 @@ These are especially useful in CI/CD where an OS keyring is unavailable.
 Created automatically. Stores a list of known projects.
 
 ```toml
+default_secrets_repo = "kennypassenier/secrets"
+global_pat = "ghp_xxx"
+global_key_hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 [[projects]]
 name = "my-app"
 secrets_repo = "acme-corp/secrets"

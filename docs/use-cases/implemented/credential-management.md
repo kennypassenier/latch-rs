@@ -18,17 +18,18 @@ As a developer on a workstation, I want my PAT and key stored securely in my OS 
 - `CredentialProvider` trait defines `get_pat()`, `get_key()`, `set_credentials()`.
 - `KeyringProvider` uses the OS keyring (`keyring` crate), namespaced by project name to prevent collisions.
 - `EnvVarProvider` reads `LATCH_PAT` and `LATCH_KEY`.
-- `FallbackChain` tries: env-specific keyring slot → project keyring slot → global keyring → env vars.
+- `FallbackChain` tries: env-specific keyring slot → project keyring slot → global keyring slot (`global.key`) → env vars → global/project config fallback.
 - All providers are mockable for testing.
 
 ## Credential Fallback Order
 
 1. OS keyring — `<project>.key.<env>` (env-specific)
 2. OS keyring — `<project>.key` (project-wide)
-3. OS keyring — `github.pat` and `github.secrets_repo` (global)
-4. OS keyring — `<project>.pat` (legacy)
-5. Environment variables — `LATCH_KEY` / `LATCH_PAT`
-6. `~/.latch/config.toml` — `key_hex` / `github_pat`
+3. OS keyring — `global.key` (global encryption key)
+4. OS keyring — `github.pat` and `github.secrets_repo` (global)
+5. OS keyring — `<project>.pat` (legacy)
+6. Environment variables — `LATCH_KEY` / `LATCH_PAT`
+7. `~/.latch/config.toml` — `global_key_hex` / `global_pat` / `default_secrets_repo` / `key_hex` / `github_pat`
 
 ## Implementation Notes
 

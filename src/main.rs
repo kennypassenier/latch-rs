@@ -37,8 +37,18 @@ enum Commands {
         action: CloneCommands,
     },
 
-    /// Store global GitHub credentials (PAT + default secrets repo) in keyring.
-    Login,
+    /// Store global credentials (PAT + KEY + default secrets repo).
+    Login {
+        /// GitHub PAT. Supports --PAT and --pat.
+        #[arg(long = "PAT", alias = "pat")]
+        pat: Option<String>,
+        /// Global encryption key. Supports --KEY and --key.
+        #[arg(long = "KEY", alias = "key")]
+        key: Option<String>,
+        /// Default secrets repo. Supports --REPO and --repo.
+        #[arg(long = "REPO", alias = "repo")]
+        repo: Option<String>,
+    },
 
     /// Initialise Latch for the current project (interactive).
     Init,
@@ -259,7 +269,16 @@ enum PullMode {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    // Compatibility: treat legacy single-dash long flags as proper clap longs.
+    let normalized_args: Vec<String> = std::env::args()
+        .map(|arg| match arg.as_str() {
+            "-PAT" => "--PAT".to_string(),
+            "-KEY" => "--KEY".to_string(),
+            "-REPO" => "--REPO".to_string(),
+            _ => arg,
+        })
+        .collect();
+    let cli = Cli::parse_from(normalized_args);
 
     let level = match cli.verbose {
         0 => tracing::Level::WARN,
@@ -309,7 +328,9 @@ async fn main() -> anyhow::Result<()> {
                 .await
             }
         },
-        Commands::Login => commands::login::run().await,
+        Commands::Login { pat, key, repo } => {
+            commands::login::run(commands::login::LoginArgs { pat, key, repo }).await
+        }
         Commands::Init => commands::init::run().await,
         Commands::Commit { env } => commands::commit::run(&env).await,
         Commands::Push { env } => commands::push::run(&env).await,

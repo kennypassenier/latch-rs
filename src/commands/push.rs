@@ -31,14 +31,6 @@ pub async fn run(env_name: &str) -> Result<()> {
         .filter(|g| g.env == env_name)
         .collect();
 
-    if staged_mappings.is_empty() && staged_groups.is_empty() {
-        anyhow::bail!(
-            "Environment '{}' has nothing staged. Run 'latch commit --env {}' first.",
-            env_name,
-            env_name
-        );
-    }
-
     // ── Connect to GitHub (PAT only — no encryption key needed) ──────────────
     let pat = FallbackChain::new(&cfg.name).get_pat()?;
     let github = GitHubClient::new(&cfg.secrets_repo, &pat)?;
@@ -57,6 +49,18 @@ pub async fn run(env_name: &str) -> Result<()> {
         .filter(|g| g.env == env_name)
         .cloned()
         .collect();
+
+    if staged_mappings.is_empty()
+        && staged_groups.is_empty()
+        && previous_mappings.is_empty()
+        && previous_groups.is_empty()
+    {
+        println!(
+            "Environment '{}' has no staged files and remote is already empty; nothing to push.",
+            env_name
+        );
+        return Ok(());
+    }
 
     // ── Upload staged blobs ───────────────────────────────────────────────────
     let total_ops = staged_mappings.len() + staged_groups.len();

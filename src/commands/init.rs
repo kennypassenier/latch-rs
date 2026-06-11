@@ -8,7 +8,7 @@ use crate::{
         project::ProjectConfig,
     },
     credentials::{
-        CredentialProvider, get_global_pat, get_global_secrets_repo,
+        CredentialProvider, get_global_key, get_global_pat, get_global_secrets_repo,
         keyring_provider::KeyringProvider,
     },
     crypto::{
@@ -36,17 +36,8 @@ pub async fn run() -> Result<()> {
         .interact_text()?;
 
     // ── Secrets repo ──────────────────────────────────────────────────────────
-    let secrets_repo = match get_global_secrets_repo() {
-        Some(repo) => {
-            println!("  Using secrets repo from keyring: {}", repo);
-            repo
-        }
-        None => {
-            bail!(
-                "No default secrets repo found in keyring. Run 'latch login' first (it stores PAT + owner/repo)."
-            )
-        }
-    };
+    let secrets_repo = get_global_secrets_repo().unwrap_or_else(|| "kennypassenier/secrets".into());
+    println!("  Using default secrets repo: {}", secrets_repo);
 
     if !secrets_repo.contains('/') {
         bail!("Secrets repo must be in 'owner/repo' format, e.g. acme/latch-secrets");
@@ -70,7 +61,7 @@ pub async fn run() -> Result<()> {
     };
 
     // ── Encryption key ────────────────────────────────────────────────────────
-    let existing_key = keyring.get_key(&project_name);
+    let existing_key = keyring.get_key(&project_name).or_else(get_global_key);
     let (key_hex, kdf_salt_b64) = if let Some(existing) = existing_key {
         println!("  Reusing existing project key from keyring.");
         (existing, None)

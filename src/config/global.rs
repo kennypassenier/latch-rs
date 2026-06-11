@@ -20,6 +20,15 @@ pub struct ProjectEntry {
 /// Top-level structure of `~/.latch/config.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GlobalConfig {
+    /// Machine-wide default secrets repo (`owner/repo`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_secrets_repo: Option<String>,
+    /// Machine-wide PAT fallback when keyring is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_pat: Option<String>,
+    /// Machine-wide encryption key fallback (hex-encoded 32 bytes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_key_hex: Option<String>,
     #[serde(default)]
     pub projects: Vec<ProjectEntry>,
 }

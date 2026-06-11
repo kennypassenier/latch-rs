@@ -78,3 +78,28 @@ sudo apt update && sudo apt upgrade latch
   the apt source is added — no extra cron or configuration needed on Proxmox.
 - Once this is live, `latch update` remains available for users who prefer the binary-only
   install path. The two mechanisms are independent.
+
+## Immediate workaround (current release, Proxmox LXC)
+
+Until APT packaging is implemented, use this deterministic host bootstrap:
+
+```bash
+# Install latch binary once (choose your preferred method)
+# Example: download release artifact and place it on PATH as /usr/local/bin/latch
+
+# Persist credentials system-wide for non-interactive shells/services
+sudo tee -a /etc/environment > /dev/null <<'EOF'
+LATCH_PAT=ghp_replace_me
+LATCH_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+EOF
+
+# Also persist in latch global config (keyring fallback) and set default repo
+latch login -PAT ghp_replace_me -KEY 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -REPO kennypassenier/secrets
+```
+
+Behavior guaranteed by current implementation:
+
+- `latch login` writes PAT/KEY/default repo to keyring when available.
+- `latch login` always writes fallback values to `~/.latch/config.toml`.
+- Credential resolution checks keyring, env vars, and fallback config.
+- Default secrets repo is `kennypassenier/secrets` unless overridden.

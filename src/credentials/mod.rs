@@ -29,9 +29,12 @@ use keyring_provider::KeyringProvider;
 
 pub const GLOBAL_PAT_SLOT: &str = "github.pat";
 pub const GLOBAL_SECRETS_REPO_SLOT: &str = "github.secrets_repo";
+pub const GLOBAL_KEY_SLOT: &str = "global.key";
+pub const DEFAULT_SECRETS_REPO: &str = "kennypassenier/secrets";
 
 pub fn get_global_pat() -> Option<String> {
     KeyringProvider::get_raw(GLOBAL_PAT_SLOT)
+        .or_else(|| GlobalConfig::load().ok().and_then(|g| g.global_pat))
 }
 
 pub fn set_global_pat(pat: &str) -> Result<()> {
@@ -40,10 +43,25 @@ pub fn set_global_pat(pat: &str) -> Result<()> {
 
 pub fn get_global_secrets_repo() -> Option<String> {
     KeyringProvider::get_raw(GLOBAL_SECRETS_REPO_SLOT)
+        .or_else(|| {
+            GlobalConfig::load()
+                .ok()
+                .and_then(|g| g.default_secrets_repo)
+        })
+        .or_else(|| Some(DEFAULT_SECRETS_REPO.to_string()))
 }
 
 pub fn set_global_secrets_repo(repo: &str) -> Result<()> {
     KeyringProvider::set_raw(GLOBAL_SECRETS_REPO_SLOT, repo)
+}
+
+pub fn get_global_key() -> Option<String> {
+    KeyringProvider::get_raw(GLOBAL_KEY_SLOT)
+        .or_else(|| GlobalConfig::load().ok().and_then(|g| g.global_key_hex))
+}
+
+pub fn set_global_key(key_hex: &str) -> Result<()> {
+    KeyringProvider::set_raw(GLOBAL_KEY_SLOT, key_hex)
 }
 
 /// Try providers in order: OS keyring → env vars → `~/.latch/config.toml`.
@@ -73,8 +91,10 @@ impl FallbackChain {
     /// Look-up order:
     /// 1. OS keyring slot `"{project}.key.{env}"`  (env-specific override)
     /// 2. OS keyring slot `"{project}.key"`         (project-wide default)
-    /// 3. `LATCH_KEY` environment variable
-    /// 4. `key_hex` in `~/.latch/config.toml`
+    /// 3. OS keyring slot `"global.key"`           (machine-wide default)
+    /// 4. `LATCH_KEY` environment variable
+    /// 5. `global_key_hex` in `~/.latch/config.toml`
+    /// 6. project `key_hex` in `~/.latch/config.toml`
     pub fn get_key_for_env(&self, env: Option<&str>) -> Result<String> {
         let keyring = KeyringProvider;
         let env_provider = EnvVarProvider;
@@ -90,12 +110,19 @@ impl FallbackChain {
         if let Some(k) = keyring.get_key(&self.project) {
             return Ok(k);
         }
-        // 3. env var
+        // 3. machine-wide key slot
+        if let Some(k) = get_global_key() {
+            return Ok(k);
+        }
+        // 4. env var
         if let Some(k) = env_provider.get_key(&self.project) {
             return Ok(k);
         }
-        // 4. config-file fallback
+        // 5/6. config-file fallbacks
         if let Ok(global) = GlobalConfig::load() {
+            if let Some(k) = global.global_key_hex {
+                return Ok(k);
+            }
             if let Some(entry) = global.get_project(&self.project) {
                 if let Some(k) = &entry.key_hex {
                     return Ok(k.clone());
@@ -104,7 +131,7 @@ impl FallbackChain {
         }
         anyhow::bail!(
             "No encryption key found for project '{}'. \
-             Run 'latch init', set LATCH_KEY, or add key_hex to ~/.latch/config.toml.",
+             Run 'latch login --KEY <key>' (or 'latch init'), set LATCH_KEY, or add key_hex/global_key_hex to ~/.latch/config.toml.",
             self.project
         )
     }

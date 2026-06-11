@@ -19,7 +19,8 @@ the latest version.
 ## Acceptance Criteria
 
 - Reads staged file list from `.latch/staging.json`.
-- Errors clearly if nothing is staged (guides user to run `latch commit` first).
+- If staging metadata is missing, errors clearly (guides user to run `latch commit` first).
+- If an env is intentionally staged empty (after deleting local `.env` files), proceeds and removes stale remote files.
 - Reads each encrypted blob from `.latch/<env>/<flat>.enc` and uploads to `{project}/{env}/{flat}.enc`.
 - Removes remote files that were previously tracked but are no longer staged.
 - Updates `manifest.json` in the secrets repo.
