@@ -71,6 +71,10 @@ enum Commands {
         /// Target environment name (e.g. dev, staging, prod).
         #[arg(long, short, default_value = "dev")]
         env: String,
+        /// Delete all existing remote blobs for this env before uploading.
+        /// Use after a key change or to fix corrupt/stale remote state.
+        #[arg(long)]
+        force: bool,
     },
 
     /// Pull and decrypt .env files from the remote secrets repo.
@@ -153,6 +157,10 @@ enum Commands {
         /// List projects in the repo and exit.
         #[arg(long)]
         list: bool,
+        /// Delete ALL files for the current project from the secrets repo and reset manifest.
+        /// Use to start fresh after a key change or corrupt state.
+        #[arg(long)]
+        reset: bool,
     },
 
     /// List or inspect clone groups for an environment.
@@ -343,7 +351,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Init => commands::init::run().await,
         Commands::Commit { env } => commands::commit::run(&env).await,
-        Commands::Push { env } => commands::push::run(&env).await,
+        Commands::Push { env, force } => commands::push::run(&env, force).await,
         Commands::Pull {
             env,
             dry_run,
@@ -371,9 +379,16 @@ async fn main() -> anyhow::Result<()> {
             PathCommands::Remove => commands::path::remove().await,
             PathCommands::Status => commands::path::status().await,
         },
-        Commands::Project { repo, env, list } => {
+        Commands::Project {
+            repo,
+            env,
+            list,
+            reset,
+        } => {
             if list {
                 commands::project::list(repo.as_deref()).await
+            } else if reset {
+                commands::project::reset_remote(repo.as_deref()).await
             } else {
                 commands::project::run(repo.as_deref(), env.as_deref()).await
             }

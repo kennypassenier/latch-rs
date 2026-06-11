@@ -19,7 +19,7 @@ fn key_fingerprint(key: &[u8; 32]) -> String {
     format!("fp:{}", hex::encode(&digest[..6]))
 }
 
-pub async fn run(env_name: &str) -> Result<()> {
+pub async fn run(env_name: &str, force: bool) -> Result<()> {
     let cwd = env::current_dir()?;
     let (cfg, project_root) = ProjectConfig::find_and_load(&cwd)?;
 
@@ -31,27 +31,61 @@ pub async fn run(env_name: &str) -> Result<()> {
         )
     })?;
 
-    let staged_mappings = staging.get_env(env_name);
-    let staged_groups: Vec<_> = staging
-        .clone_groups
-        .iter()
-        .filter(|g| g.env == env_name)
-        .collect();
-
-    // ── Connect to GitHub (PAT only — no encryption key needed) ──────────────
+    // ── Connect to GitHub ─────────────────────────────────────────────────────
     let chain = FallbackChain::new(&cfg.name);
     let pat = chain.get_pat()?;
-    // Resolve key now so we can verify uploaded blobs are actually decryptable.
     let key_hex = chain.get_key_for_env(Some(env_name))?;
     let verify_key = parse_key(&key_hex)?;
-    println!(
-        "Verifying uploads with key ({}) for project '{}'",
-        key_fingerprint(&verify_key),
-        cfg.name
-    );
     let github = GitHubClient::new(&cfg.secrets_repo, &pat)?;
 
-    // Fetch the remote manifest so we can clean up files removed since last push.
+    // ── Pre-upload: verify every local blob decrypts with the current key ─────
+    // Local verification avoids GitHub API caching false-negatives.
+    let mut pre_verify_failed: Vec<String> = Vec::new();
+    for mapping in staging.get_env(env_name) {
+        let flat = flatten_path(Path::new(&mapping.local_path));
+        let local_blob = local_blob_path(&project_root, env_name, &flat);
+        if local_blob.exists() {
+            let ct = std::fs::read(&local_blob)?;
+            if decrypt(&ct, &verify_key).is_err() {
+                pre_verify_failed.push(mapping.local_path.clone());
+            }
+        } else {
+            pre_verify_failed.push(format!(
+                "{} (blob missing — re-run commit)",
+                mapping.local_path
+            ));
+        }
+    }
+    for group in staging.clone_groups.iter().filter(|g| g.env == env_name) {
+        let local_blob = local_group_blob_path(&project_root, env_name, &group.name);
+        if local_blob.exists() {
+            let ct = std::fs::read(&local_blob)?;
+            if decrypt(&ct, &verify_key).is_err() {
+                pre_verify_failed.push(format!("group:{}", group.name));
+            }
+        } else {
+            pre_verify_failed.push(format!(
+                "group:{} (blob missing — re-run commit)",
+                group.name
+            ));
+        }
+    }
+    if !pre_verify_failed.is_empty() {
+        anyhow::bail!(
+            "Local blob verification FAILED for {} file(s) using key {}.\n\
+             Run 'latch commit' to re-encrypt, then retry:\n  {}",
+            pre_verify_failed.len(),
+            key_fingerprint(&verify_key),
+            pre_verify_failed.join("\n  ")
+        );
+    }
+    println!(
+        "Local blobs OK (key {}) — uploading to {}",
+        key_fingerprint(&verify_key),
+        cfg.secrets_repo
+    );
+
+    // Fetch the remote manifest.
     let manifest_path = Manifest::remote_path(&cfg.name);
     let mut remote_manifest = match github.get_sha(&manifest_path).await? {
         Some(_) => Manifest::from_bytes(&github.pull_file(&manifest_path).await?)?,
@@ -66,6 +100,13 @@ pub async fn run(env_name: &str) -> Result<()> {
         .cloned()
         .collect();
 
+    let staged_mappings = staging.get_env(env_name);
+    let staged_groups: Vec<_> = staging
+        .clone_groups
+        .iter()
+        .filter(|g| g.env == env_name)
+        .collect();
+
     if staged_mappings.is_empty()
         && staged_groups.is_empty()
         && previous_mappings.is_empty()
@@ -76,6 +117,28 @@ pub async fn run(env_name: &str) -> Result<()> {
             env_name
         );
         return Ok(());
+    }
+
+    // ── If --force: delete ALL existing remote blobs for this env first ───────
+    if force {
+        println!(
+            "Force mode: deleting all existing remote blobs for env '{}' before upload...",
+            env_name
+        );
+        let prefix = format!("{}/{}/", cfg.name, env_name);
+        match github.list_files(&prefix).await {
+            Ok(existing) => {
+                for path in existing {
+                    github
+                        .delete_file(
+                            &path,
+                            &format!("latch: force-clear {} [{}]", env_name, cfg.name),
+                        )
+                        .await?;
+                }
+            }
+            Err(e) => println!("  (could not list remote blobs for cleanup: {})", e),
+        }
     }
 
     // ── Upload staged blobs ───────────────────────────────────────────────────
@@ -148,52 +211,7 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     pb.finish_with_message("All files uploaded");
 
-    // ── Post-upload decrypt verification ─────────────────────────────────────
-    // Download and decrypt every just-uploaded blob with the same key used in
-    // commit. Any mismatch means the wrong key was used or the upload is corrupt.
-    let mut verify_failed: Vec<String> = Vec::new();
-    for mapping in staging.get_env(env_name) {
-        let rel = Path::new(&mapping.local_path);
-        let flat = flatten_path(rel);
-        let remote = remote_path(&cfg.name, env_name, &flat);
-        match github.pull_file(&remote).await {
-            Ok(ct) => {
-                if decrypt(&ct, &verify_key).is_err() {
-                    verify_failed.push(remote);
-                }
-            }
-            Err(e) => verify_failed.push(format!("{} (fetch failed: {})", remote, e)),
-        }
-    }
-    for group in staging.clone_groups.iter().filter(|g| g.env == env_name) {
-        match github.pull_file(&group.remote_blob).await {
-            Ok(ct) => {
-                if decrypt(&ct, &verify_key).is_err() {
-                    verify_failed.push(group.remote_blob.clone());
-                }
-            }
-            Err(e) => verify_failed.push(format!("{} (fetch failed: {})", group.remote_blob, e)),
-        }
-    }
-    if !verify_failed.is_empty() {
-        anyhow::bail!(
-            "Post-upload verification FAILED for {} blob(s) using key {}.\n\
-             These blobs cannot be decrypted with the current key:\n  {}\n\
-             Run 'latch commit' again to re-encrypt, then 'latch push'.",
-            verify_failed.len(),
-            key_fingerprint(&verify_key),
-            verify_failed.join("\n  ")
-        );
-    }
-    println!(
-        "Post-upload verify: all {} blob(s) OK.",
-        staging.get_env(env_name).len()
-            + staging
-                .clone_groups
-                .iter()
-                .filter(|g| g.env == env_name)
-                .count()
-    );
+    // ── Clean up remote files no longer staged ────────────────────────────────
     let new_paths: HashSet<&str> = staging
         .get_env(env_name)
         .iter()

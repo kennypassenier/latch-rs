@@ -85,6 +85,59 @@ fn choose_repo(global: &GlobalConfig, explicit_repo: Option<&str>) -> Result<Str
     bail!("No default secrets repo configured. Run 'latch login' first, or pass --repo owner/repo.")
 }
 
+pub async fn reset_remote(repo: Option<&str>) -> Result<()> {
+    let cwd = env::current_dir()?;
+    let (cfg, _root) = ProjectConfig::find_and_load(&cwd)?;
+    let global = GlobalConfig::load().unwrap_or_default();
+    let selected_repo = match repo {
+        Some(r) => r.to_string(),
+        None => cfg.secrets_repo.clone(),
+    };
+    let pat = resolve_pat(&global)?;
+    let github = GitHubClient::new(&selected_repo, &pat)?;
+
+    println!(
+        "This will delete ALL remote files for project '{}' in {}.",
+        cfg.name, selected_repo
+    );
+    println!("Local .env files and .latch/config.toml are NOT affected.");
+    let confirmed = Confirm::new()
+        .with_prompt("Continue?")
+        .default(false)
+        .interact()?;
+    if !confirmed {
+        println!("Aborted.");
+        return Ok(());
+    }
+
+    let prefix = format!("{}/", cfg.name);
+    let files = github.list_files(&prefix).await?;
+    if files.is_empty() {
+        println!(
+            "No remote files found for project '{}'. Nothing to delete.",
+            cfg.name
+        );
+        return Ok(());
+    }
+
+    println!("Deleting {} remote file(s)...", files.len());
+    for path in &files {
+        github
+            .delete_file(path, &format!("latch: project reset [{}]", cfg.name))
+            .await?;
+        println!("  deleted {}", path);
+    }
+
+    println!(
+        "\nProject '{}' has been wiped from {}.",
+        cfg.name, selected_repo
+    );
+    println!(
+        "Run 'latch init' to re-initialise, then 'latch commit && latch push --force' to upload fresh."
+    );
+    Ok(())
+}
+
 pub async fn list(repo: Option<&str>) -> Result<()> {
     let global = GlobalConfig::load().unwrap_or_default();
     let selected_repo = choose_repo(&global, repo)?;
