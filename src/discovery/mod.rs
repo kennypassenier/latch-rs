@@ -168,7 +168,7 @@ pub fn read_pragma(path: &Path) -> Option<String> {
     if valid { Some(group) } else { None }
 }
 
-/// Return `true` if the file contains at least one `KEY=VALUE` pair,
+/// Return `true` if the file contains meaningful payload content,
 /// ignoring the optional pragma first line, blank lines, and comment lines.
 ///
 /// Used during `latch push` to detect subscribe-intent members (files that
@@ -181,7 +181,7 @@ pub fn has_key_value_pairs(path: &Path) -> bool {
     // since we only call this after confirming a pragma exists.
     content.lines().skip(1).any(|line| {
         let t = line.trim();
-        !t.is_empty() && !t.starts_with('#') && t.contains('=')
+        !t.is_empty() && !t.starts_with('#')
     })
 }
 
