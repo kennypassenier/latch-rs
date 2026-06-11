@@ -4,7 +4,10 @@ use std::env;
 
 use crate::{
     config::{global::GlobalConfig, project::ProjectConfig},
-    credentials::{GLOBAL_KEY_SLOT, GLOBAL_PAT_SLOT, GLOBAL_SECRETS_REPO_SLOT, keyring_provider::KeyringProvider},
+    credentials::{
+        GLOBAL_KEY_SLOT, GLOBAL_PAT_SLOT, GLOBAL_SECRETS_REPO_SLOT,
+        keyring_provider::KeyringProvider,
+    },
     crypto::parse_key,
 };
 
@@ -16,7 +19,10 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     match ProjectConfig::find_and_load(&cwd) {
         Ok((cfg, root)) => {
-            println!("  project config: {}", root.join(".latch/config.toml").display());
+            println!(
+                "  project config: {}",
+                root.join(".latch/config.toml").display()
+            );
             println!("  project name: {}", cfg.name);
             println!("  project repo: {}", cfg.secrets_repo);
             println!("  project default env: {}", cfg.default_env);
@@ -32,13 +38,19 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     let global = GlobalConfig::load()?;
     println!("\nGlobal config (~/.latch/config.toml)");
-    println!("  default_secrets_repo: {}", global.default_secrets_repo.as_deref().unwrap_or("<none>"));
+    println!(
+        "  default_secrets_repo: {}",
+        global.default_secrets_repo.as_deref().unwrap_or("<none>")
+    );
     print_key_source("config:global_key_hex", global.global_key_hex.as_deref());
     print_pat_source("config:global_pat", global.global_pat.as_deref());
 
     println!("  projects: {}", global.projects.len());
     for p in &global.projects {
-        println!("  - {} (repo={}, default_env={})", p.name, p.secrets_repo, p.default_env);
+        println!(
+            "  - {} (repo={}, default_env={})",
+            p.name, p.secrets_repo, p.default_env
+        );
         print_key_source("    key_hex", p.key_hex.as_deref());
         print_pat_source("    github_pat", p.github_pat.as_deref());
     }
@@ -85,7 +97,12 @@ fn print_key_source(label: &str, value: Option<&str>) {
             let parsed = parse_key(v);
             match parsed {
                 Ok(key) => {
-                    println!("  {}: present ({}, len={})", label, key_fingerprint(&key), v.len());
+                    println!(
+                        "  {}: present ({}, len={})",
+                        label,
+                        key_fingerprint(&key),
+                        v.len()
+                    );
                 }
                 Err(_) => {
                     println!("  {}: present (invalid key format, len={})", label, v.len());
