@@ -61,7 +61,7 @@ pub async fn run() -> Result<()> {
     };
 
     // ── Encryption key ────────────────────────────────────────────────────────
-    let existing_key = keyring.get_key(&project_name).or_else(get_global_key);
+    let existing_key = get_global_key().or_else(|| keyring.get_key(&project_name));
     let (key_hex, kdf_salt_b64) = if let Some(existing) = existing_key {
         println!("  Reusing existing project key from keyring.");
         (existing, None)

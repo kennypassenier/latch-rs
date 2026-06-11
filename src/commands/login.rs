@@ -3,6 +3,7 @@ use dialoguer::{Input, Password};
 
 use crate::{
     config::global::GlobalConfig,
+    credentials::keyring_provider::KeyringProvider,
     credentials::{DEFAULT_SECRETS_REPO, set_global_key, set_global_pat, set_global_secrets_repo},
     crypto::parse_key,
 };
@@ -58,6 +59,15 @@ pub async fn run(args: LoginArgs) -> Result<()> {
     global.global_pat = Some(pat);
     global.global_key_hex = Some(key_hex);
     global.default_secrets_repo = Some(repo.clone());
+
+    // Keep known project entries aligned with the global key so stale
+    // per-project keys cannot silently diverge across machines.
+    for project in &mut global.projects {
+        project.key_hex = global.global_key_hex.clone();
+        let slot = format!("{}.key", project.name);
+        let _ = KeyringProvider::set_raw(&slot, project.key_hex.as_deref().unwrap_or_default());
+    }
+
     global.save()?;
 
     if pat_keyring_ok && key_keyring_ok && repo_keyring_ok {

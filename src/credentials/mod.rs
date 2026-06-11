@@ -88,41 +88,44 @@ impl FallbackChain {
 
     /// Returns the key for a specific environment (8.5 multi-key support).
     ///
-    /// Look-up order:
-    /// 1. OS keyring slot `"{project}.key.{env}"`  (env-specific override)
-    /// 2. OS keyring slot `"{project}.key"`         (project-wide default)
-    /// 3. OS keyring slot `"global.key"`           (machine-wide default)
-    /// 4. `LATCH_KEY` environment variable
-    /// 5. `global_key_hex` in `~/.latch/config.toml`
+    /// Look-up order (deterministic cross-machine behavior):
+    /// 1. `LATCH_KEY` environment variable            (explicit one-shot override)
+    /// 2. OS keyring slot `"global.key"`            (machine-wide default)
+    /// 3. `global_key_hex` in `~/.latch/config.toml` (durable fallback)
+    /// 4. OS keyring slot `"{project}.key.{env}"`   (env-specific override)
+    /// 5. OS keyring slot `"{project}.key"`         (legacy/project default)
     /// 6. project `key_hex` in `~/.latch/config.toml`
     pub fn get_key_for_env(&self, env: Option<&str>) -> Result<String> {
         let keyring = KeyringProvider;
         let env_provider = EnvVarProvider;
 
-        // 1. env-specific keyring slot
+        // 1. explicit env var override
+        if let Some(k) = env_provider.get_key(&self.project) {
+            return Ok(k);
+        }
+        // 2. machine-wide key slot
+        if let Some(k) = KeyringProvider::get_raw(GLOBAL_KEY_SLOT) {
+            return Ok(k);
+        }
+        // 3. durable global config fallback
+        if let Ok(global) = GlobalConfig::load() {
+            if let Some(k) = global.global_key_hex {
+                return Ok(k);
+            }
+        }
+        // 4. env-specific keyring slot
         if let Some(env_name) = env {
             let slot = format!("{}.key.{}", self.project, env_name);
             if let Some(k) = KeyringProvider::get_raw(&slot) {
                 return Ok(k);
             }
         }
-        // 2. project-wide keyring slot
+        // 5. project-wide keyring slot
         if let Some(k) = keyring.get_key(&self.project) {
             return Ok(k);
         }
-        // 3. machine-wide key slot
-        if let Some(k) = get_global_key() {
-            return Ok(k);
-        }
-        // 4. env var
-        if let Some(k) = env_provider.get_key(&self.project) {
-            return Ok(k);
-        }
-        // 5/6. config-file fallbacks
+        // 6. project config fallback
         if let Ok(global) = GlobalConfig::load() {
-            if let Some(k) = global.global_key_hex {
-                return Ok(k);
-            }
             if let Some(entry) = global.get_project(&self.project) {
                 if let Some(k) = &entry.key_hex {
                     return Ok(k.clone());

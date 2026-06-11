@@ -18,6 +18,7 @@ As a developer on a new machine or LXC container, I want to run `latch login` on
 - Defaults secrets repo to `kennypassenier/secrets` when not provided.
 - Stores PAT/KEY/repo in OS keyring under global slots (`github.pat`, `global.key`, `github.secrets_repo`) when available.
 - Always persists fallback values to `~/.latch/config.toml` (`global_pat`, `global_key_hex`, `default_secrets_repo`).
+- Synchronises known project fallback keys to the same global key to prevent stale project-key drift across machines.
 - Subsequent commands resolve PAT/KEY from keyring or fallback config automatically.
 
 ## Command

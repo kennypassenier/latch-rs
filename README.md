@@ -338,7 +338,7 @@ Automation-friendly options:
 5. `latch clone create --verify-code <code>` adds an integrity tag; `latch clone apply --verify-code <code>` verifies it before decrypting.
 
 What gets cloned:
-1. Global keyring slots (`github.pat`, `github.secrets_repo`)
+1. Global keyring slots (`github.pat`, `github.secrets_repo`, `global.key`)
 2. Project key slots (`<project>.key`, `<project>.key.<env>`)
 3. Legacy project PAT slots (`<project>.pat`) when present
 4. Project metadata entries in `~/.latch/config.toml`
@@ -678,13 +678,15 @@ After one manual install to a managed PATH location, future updates can be done 
 
 For each project, Latch looks for credentials in this order:
 
-1. **OS keyring** (env-specific slot) — `<project>.key.<env>` *(key only, when `--env` is supplied)*
-2. **OS keyring** (project-wide slot) — `<project>.key`
-3. **OS keyring** (global key slot) — `global.key`
-4. **OS keyring** (global PAT/repo slots) — `github.pat` and `github.secrets_repo`
-5. **OS keyring** (legacy project PAT slot) — `<project>.pat`
-6. **Environment variables** — `LATCH_KEY` / `LATCH_PAT`
-7. **`~/.latch/config.toml`** — `global_key_hex` / `global_pat` / `default_secrets_repo` / project fallback fields
+1. **Environment variable** (explicit key override) — `LATCH_KEY`
+2. **OS keyring** (global key slot) — `global.key`
+3. **`~/.latch/config.toml`** (global key fallback) — `global_key_hex`
+4. **OS keyring** (env-specific key slot) — `<project>.key.<env>`
+5. **OS keyring** (project-wide key slot) — `<project>.key`
+6. **`~/.latch/config.toml`** (project key fallback) — `key_hex`
+7. **OS keyring** (global PAT/repo slots) — `github.pat` and `github.secrets_repo`
+8. **OS keyring** (legacy project PAT slot) — `<project>.pat`
+9. **Environment/config PAT fallback** — `LATCH_PAT`, `global_pat`, `github_pat`
 
 The first non-empty value wins.
 
