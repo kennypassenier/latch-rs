@@ -226,7 +226,7 @@ pub async fn run(env_name: &str, dry_run: bool, sparse: bool) -> Result<()> {
         pb.set_message(format!("{}", rel_path.display()));
 
         let ciphertext = if first_probe_target.as_deref() == Some(remote.as_str()) {
-            first_probe_ciphertext.clone().unwrap_or_else(Vec::new)
+            first_probe_ciphertext.clone().unwrap_or_default()
         } else {
             github.pull_file(&remote).await?
         };
@@ -255,7 +255,7 @@ pub async fn run(env_name: &str, dry_run: bool, sparse: bool) -> Result<()> {
     for group in &groups {
         pb.set_message(format!("group:{}", group.name));
         let ciphertext = if first_probe_target.as_deref() == Some(group.remote_blob.as_str()) {
-            first_probe_ciphertext.clone().unwrap_or_else(Vec::new)
+            first_probe_ciphertext.clone().unwrap_or_default()
         } else {
             github.pull_file(&group.remote_blob).await?
         };
