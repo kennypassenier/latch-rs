@@ -25,6 +25,15 @@ pub async fn run(env_name: &str) -> Result<()> {
     let chain = FallbackChain::new(&cfg.name);
     let key_hex = chain.get_key_for_env(Some(env_name))?;
     let key = parse_key(&key_hex)?;
+    let fp = {
+        use sha2::{Digest, Sha256};
+        let d = Sha256::digest(key);
+        format!("fp:{}", hex::encode(&d[..6]))
+    };
+    println!(
+        "Key {} (from project '{}' env '{}')\n",
+        fp, cfg.name, env_name
+    );
     let pat = chain.get_pat()?;
 
     let github = GitHubClient::new(&cfg.secrets_repo, &pat)?;

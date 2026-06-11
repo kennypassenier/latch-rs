@@ -1,6 +1,7 @@
 use anyhow::Result;
 use dialoguer::Select;
 use indicatif::{ProgressBar, ProgressStyle};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -47,13 +48,15 @@ async fn process_group(
             let ciphertext = std::fs::read(&local_blob)?;
             decrypt(&ciphertext, key)?
         } else {
-            pb.suspend(|| {
-                println!(
-                    "  ⚠ Clone group '{}' has subscribe-only members but no local cache exists.\n    Run 'latch pull --env {}' first to fetch the current group state.",
-                    group_name, env_name
-                );
-            });
-            return Ok(None);
+            // No local cache after reset means we cannot recover subscribe-only
+            // group content. Error out — silently skipping would leave a stale,
+            // possibly wrong-key blob in the remote.
+            anyhow::bail!(
+                "Clone group '{}' has subscribe-only members and no local cache.\n\
+                 Run 'latch pull --env {}' first to populate the cache, then retry commit.",
+                group_name,
+                env_name
+            );
         }
     } else if content_members.len() == 1 {
         content_members[0].1.clone()
@@ -111,6 +114,24 @@ async fn process_group(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&local_blob, &ciphertext)?;
+
+    // Self-verify: decrypt the blob we just wrote and confirm it matches.
+    let verify_ct = std::fs::read(&local_blob)?;
+    let verify_pt = decrypt(&verify_ct, key).map_err(|_| {
+        anyhow::anyhow!(
+            "BUG: group blob for '{}' cannot be decrypted with the key we just used. \
+             Key fp:{}",
+            group_name,
+            key_fingerprint(key)
+        )
+    })?;
+    if verify_pt != canonical_bytes {
+        anyhow::bail!(
+            "BUG: group blob '{}' round-trip content mismatch.",
+            group_name
+        );
+    }
+
     pb.set_message(format!("group:{}", group_name));
 
     let member_paths = members
@@ -139,6 +160,11 @@ async fn process_group(
 
 // ── Main command ──────────────────────────────────────────────────────────────
 
+fn key_fingerprint(key: &[u8; 32]) -> String {
+    let digest = Sha256::digest(key);
+    format!("fp:{}", hex::encode(&digest[..6]))
+}
+
 pub async fn run(env_name: &str) -> Result<()> {
     let cwd = env::current_dir()?;
     let (cfg, project_root) = ProjectConfig::find_and_load(&cwd)?;
@@ -146,6 +172,12 @@ pub async fn run(env_name: &str) -> Result<()> {
     let chain = FallbackChain::new(&cfg.name);
     let key_hex = chain.get_key_for_env(Some(env_name))?;
     let key = parse_key(&key_hex)?;
+    println!(
+        "Using key ({}) for project '{}' env '{}'",
+        key_fingerprint(&key),
+        cfg.name,
+        env_name
+    );
 
     // Load any existing staging manifest so we can preserve other envs.
     let mut staging =
@@ -227,6 +259,16 @@ pub async fn run(env_name: &str) -> Result<()> {
         }
         std::fs::write(&local_blob, &ciphertext)?;
 
+        // Self-verify: blob must be decryptable with the key we just used.
+        let verify_ct = std::fs::read(&local_blob)?;
+        decrypt(&verify_ct, &key).map_err(|_| {
+            anyhow::anyhow!(
+                "BUG: blob for '{}' cannot be decrypted after writing. Key fp:{}",
+                rel_path.display(),
+                key_fingerprint(&key)
+            )
+        })?;
+
         new_mappings.push(FileMapping {
             local_path: rel_path.to_string_lossy().into_owned(),
         });
@@ -251,7 +293,7 @@ pub async fn run(env_name: &str) -> Result<()> {
             .count();
 
     println!(
-        "\nStaged {} file(s) for env '{}' in .latch/.",
+        "\nStaged {} file(s) for env '{}' in .latch/. All blobs verified OK.",
         total_staged, env_name
     );
     println!("Run 'latch push --env {}' to upload to GitHub.", env_name);

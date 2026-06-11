@@ -1,5 +1,6 @@
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::env;
 use std::path::Path;
@@ -7,10 +8,16 @@ use std::path::Path;
 use crate::{
     config::project::ProjectConfig,
     credentials::FallbackChain,
+    crypto::{decrypt, parse_key},
     discovery::{flatten_path, local_blob_path, local_group_blob_path, remote_path},
     github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
+
+fn key_fingerprint(key: &[u8; 32]) -> String {
+    let digest = Sha256::digest(key);
+    format!("fp:{}", hex::encode(&digest[..6]))
+}
 
 pub async fn run(env_name: &str) -> Result<()> {
     let cwd = env::current_dir()?;
@@ -32,7 +39,16 @@ pub async fn run(env_name: &str) -> Result<()> {
         .collect();
 
     // ── Connect to GitHub (PAT only — no encryption key needed) ──────────────
-    let pat = FallbackChain::new(&cfg.name).get_pat()?;
+    let chain = FallbackChain::new(&cfg.name);
+    let pat = chain.get_pat()?;
+    // Resolve key now so we can verify uploaded blobs are actually decryptable.
+    let key_hex = chain.get_key_for_env(Some(env_name))?;
+    let verify_key = parse_key(&key_hex)?;
+    println!(
+        "Verifying uploads with key ({}) for project '{}'",
+        key_fingerprint(&verify_key),
+        cfg.name
+    );
     let github = GitHubClient::new(&cfg.secrets_repo, &pat)?;
 
     // Fetch the remote manifest so we can clean up files removed since last push.
@@ -132,7 +148,52 @@ pub async fn run(env_name: &str) -> Result<()> {
 
     pb.finish_with_message("All files uploaded");
 
-    // ── Clean up remote files no longer staged ────────────────────────────────
+    // ── Post-upload decrypt verification ─────────────────────────────────────
+    // Download and decrypt every just-uploaded blob with the same key used in
+    // commit. Any mismatch means the wrong key was used or the upload is corrupt.
+    let mut verify_failed: Vec<String> = Vec::new();
+    for mapping in staging.get_env(env_name) {
+        let rel = Path::new(&mapping.local_path);
+        let flat = flatten_path(rel);
+        let remote = remote_path(&cfg.name, env_name, &flat);
+        match github.pull_file(&remote).await {
+            Ok(ct) => {
+                if decrypt(&ct, &verify_key).is_err() {
+                    verify_failed.push(remote);
+                }
+            }
+            Err(e) => verify_failed.push(format!("{} (fetch failed: {})", remote, e)),
+        }
+    }
+    for group in staging.clone_groups.iter().filter(|g| g.env == env_name) {
+        match github.pull_file(&group.remote_blob).await {
+            Ok(ct) => {
+                if decrypt(&ct, &verify_key).is_err() {
+                    verify_failed.push(group.remote_blob.clone());
+                }
+            }
+            Err(e) => verify_failed.push(format!("{} (fetch failed: {})", group.remote_blob, e)),
+        }
+    }
+    if !verify_failed.is_empty() {
+        anyhow::bail!(
+            "Post-upload verification FAILED for {} blob(s) using key {}.\n\
+             These blobs cannot be decrypted with the current key:\n  {}\n\
+             Run 'latch commit' again to re-encrypt, then 'latch push'.",
+            verify_failed.len(),
+            key_fingerprint(&verify_key),
+            verify_failed.join("\n  ")
+        );
+    }
+    println!(
+        "Post-upload verify: all {} blob(s) OK.",
+        staging.get_env(env_name).len()
+            + staging
+                .clone_groups
+                .iter()
+                .filter(|g| g.env == env_name)
+                .count()
+    );
     let new_paths: HashSet<&str> = staging
         .get_env(env_name)
         .iter()
