@@ -96,47 +96,69 @@ impl FallbackChain {
     /// 5. OS keyring slot `"{project}.key"`         (legacy/project default)
     /// 6. project `key_hex` in `~/.latch/config.toml`
     pub fn get_key_for_env(&self, env: Option<&str>) -> Result<String> {
-        let keyring = KeyringProvider;
-        let env_provider = EnvVarProvider;
-
-        // 1. explicit env var override
-        if let Some(k) = env_provider.get_key(&self.project) {
-            return Ok(k);
-        }
-        // 2. machine-wide key slot
-        if let Some(k) = KeyringProvider::get_raw(GLOBAL_KEY_SLOT) {
-            return Ok(k);
-        }
-        // 3. durable global config fallback
-        if let Ok(global) = GlobalConfig::load() {
-            if let Some(k) = global.global_key_hex {
-                return Ok(k);
-            }
-        }
-        // 4. env-specific keyring slot
-        if let Some(env_name) = env {
-            let slot = format!("{}.key.{}", self.project, env_name);
-            if let Some(k) = KeyringProvider::get_raw(&slot) {
-                return Ok(k);
-            }
-        }
-        // 5. project-wide keyring slot
-        if let Some(k) = keyring.get_key(&self.project) {
-            return Ok(k);
-        }
-        // 6. project config fallback
-        if let Ok(global) = GlobalConfig::load() {
-            if let Some(entry) = global.get_project(&self.project) {
-                if let Some(k) = &entry.key_hex {
-                    return Ok(k.clone());
-                }
-            }
+        if let Some((_, key)) = self.key_candidates_for_env(env).into_iter().next() {
+            return Ok(key);
         }
         anyhow::bail!(
             "No encryption key found for project '{}'. \
              Run 'latch login --KEY <key>' (or 'latch init'), set LATCH_KEY, or add key_hex/global_key_hex to ~/.latch/config.toml.",
             self.project
         )
+    }
+
+    /// Ordered key candidates from all supported sources.
+    ///
+    /// Returned as `(source, key_hex_or_base64)` tuples, de-duplicated by value.
+    pub fn key_candidates_for_env(&self, env: Option<&str>) -> Vec<(String, String)> {
+        let keyring = KeyringProvider;
+        let env_provider = EnvVarProvider;
+        let mut out: Vec<(String, String)> = Vec::new();
+
+        // Prefer machine-global key material for deterministic cross-host behavior.
+        if let Some(k) = KeyringProvider::get_raw(GLOBAL_KEY_SLOT) {
+            out.push(("keyring:global.key".to_string(), k));
+        }
+        if let Ok(global) = GlobalConfig::load() {
+            if let Some(k) = global.global_key_hex {
+                out.push(("config:global_key_hex".to_string(), k));
+            }
+        }
+
+        // Explicit env var remains available for CI and one-shot overrides.
+        if let Some(k) = env_provider.get_key(&self.project) {
+            out.push(("env:LATCH_KEY".to_string(), k));
+        }
+
+        if let Some(env_name) = env {
+            let slot = format!("{}.key.{}", self.project, env_name);
+            if let Some(k) = KeyringProvider::get_raw(&slot) {
+                out.push((format!("keyring:{}", slot), k));
+            }
+        }
+
+        if let Some(k) = keyring.get_key(&self.project) {
+            out.push((format!("keyring:{}.key", self.project), k));
+        }
+
+        if let Ok(global) = GlobalConfig::load() {
+            if let Some(entry) = global.get_project(&self.project) {
+                if let Some(k) = &entry.key_hex {
+                    out.push((
+                        format!("config:projects[{}].key_hex", self.project),
+                        k.clone(),
+                    ));
+                }
+            }
+        }
+
+        // De-duplicate candidates while preserving order.
+        let mut deduped: Vec<(String, String)> = Vec::new();
+        for (src, key) in out {
+            if !deduped.iter().any(|(_, existing)| existing == &key) {
+                deduped.push((src, key));
+            }
+        }
+        deduped
     }
 
     /// Store an environment-specific key in the OS keyring (8.5).
