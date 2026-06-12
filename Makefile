@@ -1,10 +1,14 @@
-.PHONY: bump-major bump-minor bump-patch show-version build build-linux ci-local install-hooks
+# Define the target OS and glibc version to match Proxmox Debian 12 LXC containers
+LXC_BUILD_IMAGE ?= debian:12-slim
+LXC_GLIBC_VERSION = 2.36
+
+.PHONY: bump-major bump-minor bump-patch show-version build build-linux ci-local install-hooks build-lxc
 
 show-version:
 	@grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/'
 
 bump-major:
-	@bash -ec '
+	@bash -ec ' \
 	old=$$(grep -m1 "^version = \"" Cargo.toml | sed -E "s/version = \"([^\"]+)\"/\1/"); \
 	IFS=. read -r major minor patch <<< "$$old"; \
 	new="$$((major + 1)).0.0"; \
@@ -12,7 +16,7 @@ bump-major:
 	echo "Bumped version: $$old -> $$new"'
 
 bump-minor:
-	@bash -ec '
+	@bash -ec ' \
 	old=$$(grep -m1 "^version = \"" Cargo.toml | sed -E "s/version = \"([^\"]+)\"/\1/"); \
 	IFS=. read -r major minor patch <<< "$$old"; \
 	new="$$major.$$((minor + 1)).0"; \
@@ -20,7 +24,7 @@ bump-minor:
 	echo "Bumped version: $$old -> $$new"'
 
 bump-patch:
-	@bash -ec '
+	@bash -ec ' \
 	old=$$(grep -m1 "^version = \"" Cargo.toml | sed -E "s/version = \"([^\"]+)\"/\1/"); \
 	IFS=. read -r major minor patch <<< "$$old"; \
 	new="$$major.$$minor.$$((patch + 1))"; \
@@ -53,3 +57,17 @@ build: build-linux
 	@echo "Symlinked: ./latch -> target/debug/latch"
 	@./target/x86_64-unknown-linux-gnu/release/latch path add
 	@echo "Installed and registered: $$HOME/.local/bin/latch"
+
+build-lxc:
+	@echo "Starting isolated LXC compatible build..."
+	@echo "Target environment: $(LXC_BUILD_IMAGE) (glibc $(LXC_GLIBC_VERSION))"
+	docker run --rm \
+		--volume "$(PWD):/workspace" \
+		--workdir /workspace \
+		$(LXC_BUILD_IMAGE) \
+		sh -c "apt-get update -y && \
+		       apt-get install -y --no-install-recommends ca-certificates curl build-essential libssl-dev pkg-config && \
+		       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && \
+		       . \$$HOME/.cargo/env && \
+		       cargo build --release"
+	@echo "Build complete. Binary available at target/release/latch"
