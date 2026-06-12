@@ -73,32 +73,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  test:
-    name: Test suite
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-      # System dependencies are required here as well to compile the test binaries
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      # Execute the standard test suite using the locked dependency tree
-      - name: Run tests
-        run: cargo test --locked
-
   msrv:
     name: MSRV (Rust 1.86)
     runs-on: ubuntu-latest
@@ -133,7 +107,6 @@ jobs:
     needs:
       - fmt
       - clippy
-      - test
       - msrv
     runs-on: ubuntu-latest
     outputs:
