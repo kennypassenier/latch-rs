@@ -44,10 +44,16 @@ pub async fn run(args: PullArgs) -> Result<()> {
     let github = GitHubClient::new(&ctx.secrets_repo, &pat)?;
 
     let manifest_path = Manifest::remote_path(&ctx.project);
-    let manifest_bytes = github.pull_file(&manifest_path).await.map_err(|_| {
+    let manifest_bytes = github.pull_file(&manifest_path).await.map_err(|e| {
         anyhow::anyhow!(
-            "manifest.json not found in {}. Run 'latch init' first.",
-            ctx.secrets_repo
+            "Failed to read '{}' from {}: {}\n\
+             This usually means one of:\n\
+             - PAT is invalid or lacks access to the repo\n\
+             - project/repo is wrong\n\
+             - manifest is genuinely missing (run 'latch init' + 'latch push' on the source machine).",
+            manifest_path,
+            ctx.secrets_repo,
+            e
         )
     })?;
     let manifest = Manifest::from_bytes(&manifest_bytes)?;
@@ -107,9 +113,12 @@ pub async fn run(args: PullArgs) -> Result<()> {
         return Ok(());
     }
 
-    let key_hex = match ctx.key {
-        Some(key) => key,
-        None => chain.get_key_for_env(Some(env_name))?,
+    let (primary_source, key_hex) = match ctx.key {
+        Some(key) => ("arg:--KEY".to_string(), key),
+        None => (
+            "resolved:keychain".to_string(),
+            chain.get_key_for_env(Some(env_name))?,
+        ),
     };
 
     let total = mappings.len() + groups.iter().map(|g| g.members.len()).sum::<usize>();
@@ -128,7 +137,7 @@ pub async fn run(args: PullArgs) -> Result<()> {
         first_probe_target = Some(first_group.remote_blob.clone());
     }
 
-    let candidates = key_candidates(&chain, Some(env_name), &key_hex);
+    let candidates = key_candidates(&chain, Some(env_name), &key_hex, &primary_source);
     if candidates.is_empty() {
         anyhow::bail!(
             "No encryption key found for env '{}' in project '{}'.",
@@ -382,8 +391,9 @@ fn key_candidates(
     chain: &FallbackChain,
     env: Option<&str>,
     explicit_key: &str,
+    primary_source: &str,
 ) -> Vec<(String, String)> {
-    let mut candidates = vec![("arg:--KEY".to_string(), explicit_key.to_string())];
+    let mut candidates = vec![(primary_source.to_string(), explicit_key.to_string())];
     for (source, candidate) in chain.key_candidates_for_env(env) {
         if candidate != explicit_key {
             candidates.push((source, candidate));
@@ -529,7 +539,7 @@ mod tests {
         let chain = FallbackChain::new("demo");
         let explicit = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 
-        let candidates = key_candidates(&chain, Some("dev"), explicit);
+        let candidates = key_candidates(&chain, Some("dev"), explicit, "arg:--KEY");
 
         assert_eq!(candidates[0].0, "arg:--KEY");
         assert_eq!(candidates[0].1, explicit);
