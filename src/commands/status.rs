@@ -46,18 +46,31 @@ pub async fn run(env_name: &str) -> Result<()> {
     let manifest = Manifest::from_bytes(&manifest_bytes)?;
 
     let mappings = manifest.get_env(env_name);
-    let groups: Vec<_> = manifest
-        .clone_groups
-        .iter()
-        .filter(|g| g.env == env_name)
-        .collect();
+    let has_legacy_groups = manifest.clone_groups.iter().any(|g| g.env == env_name);
 
-    if mappings.is_empty() && groups.is_empty() {
+    if mappings.is_empty() {
+        if has_legacy_groups {
+            println!("Clone groups are temporarily disabled in this version.");
+            println!(
+                "Re-stage/push on the source machine to convert this env to standalone entries:"
+            );
+            println!(
+                "  latch commit --env {} && latch push --env {} --force",
+                env_name, env_name
+            );
+            return Ok(());
+        }
         println!(
             "No files tracked for env '{}'. Run 'latch push --env {}' first.",
             env_name, env_name
         );
         return Ok(());
+    }
+
+    if has_legacy_groups {
+        println!(
+            "Note: clone groups are temporarily disabled; status only checks standalone mappings.\n"
+        );
     }
 
     println!("Status for project '{}' / env '{}'\n", cfg.name, env_name);
@@ -105,56 +118,6 @@ pub async fn run(env_name: &str) -> Result<()> {
 
         if !matches!(status, FileStatus::InSync) {
             any_out_of_sync = true;
-        }
-    }
-
-    if !groups.is_empty() {
-        println!("\nClone groups:\n");
-        for group in &groups {
-            let mut group_ok = true;
-            let remote_plain = match github.pull_file(&group.remote_blob).await {
-                Err(e) => {
-                    println!("  X group:{}  error ({})", group.name, e);
-                    any_out_of_sync = true;
-                    continue;
-                }
-                Ok(ciphertext) => match decrypt(&ciphertext, &key) {
-                    Err(e) => {
-                        println!("  X group:{}  decrypt failed ({})", group.name, e);
-                        any_out_of_sync = true;
-                        continue;
-                    }
-                    Ok(plain) => plain,
-                },
-            };
-
-            for member in &group.members {
-                let local_abs = project_root.join(member);
-                if !local_abs.exists() {
-                    group_ok = false;
-                    break;
-                }
-                let local_bytes = std::fs::read(&local_abs)?;
-                if local_bytes != remote_plain {
-                    group_ok = false;
-                    break;
-                }
-            }
-
-            if group_ok {
-                println!(
-                    "  OK in sync   group:{} ({} members)",
-                    group.name,
-                    group.members.len()
-                );
-            } else {
-                println!(
-                    "  ~ modified  group:{} ({} members)",
-                    group.name,
-                    group.members.len()
-                );
-                any_out_of_sync = true;
-            }
         }
     }
 

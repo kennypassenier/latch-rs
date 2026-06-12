@@ -8,7 +8,7 @@ use crate::{
     config::project::ProjectConfig,
     credentials::FallbackChain,
     crypto::{decrypt, parse_key},
-    discovery::{flatten_path, local_blob_path, local_group_blob_path, remote_path},
+    discovery::{flatten_path, local_blob_path, remote_path},
     github::{RemoteStorage as _, client::GitHubClient},
     manifest::Manifest,
 };
@@ -59,13 +59,18 @@ pub async fn run(args: PullArgs) -> Result<()> {
     let manifest = Manifest::from_bytes(&manifest_bytes)?;
 
     let mappings = manifest.get_env(env_name);
-    let groups: Vec<_> = manifest
-        .clone_groups
-        .iter()
-        .filter(|g| g.env == env_name)
-        .collect();
+    let has_legacy_groups = manifest.clone_groups.iter().any(|g| g.env == env_name);
 
-    if mappings.is_empty() && groups.is_empty() {
+    if mappings.is_empty() {
+        if has_legacy_groups {
+            anyhow::bail!(
+                "Clone groups are temporarily disabled.\n\
+                 This env currently has only group-based entries in the manifest.\n\
+                 Re-stage on the source machine with: 'latch commit --env {} && latch push --env {} --force'",
+                env_name,
+                env_name
+            );
+        }
         println!(
             "No files tracked for env '{}' in project '{}'. Run 'latch push --env {}' first.",
             env_name, ctx.project, env_name
@@ -73,13 +78,18 @@ pub async fn run(args: PullArgs) -> Result<()> {
         return Ok(());
     }
 
+    if has_legacy_groups {
+        println!(
+            "Note: clone groups are temporarily disabled in this version; only standalone file mappings are pulled."
+        );
+    }
+
     if args.dry_run {
         let mode = if args.sparse { "sparse" } else { "full" };
         println!(
-            "[dry-run][{}] Would pull {} standalone file(s) + {} group(s) for env '{}' into {}",
+            "[dry-run][{}] Would pull {} standalone file(s) for env '{}' into {}",
             mode,
             mappings.len(),
-            groups.len(),
             env_name,
             ctx.project_root.display()
         );
@@ -94,22 +104,6 @@ pub async fn run(args: PullArgs) -> Result<()> {
                 println!("  {} <- {}", rel, remote);
             }
         }
-        for g in &groups {
-            println!(
-                "  group '{}' ({} member(s)) <- {}",
-                g.name,
-                g.members.len(),
-                g.remote_blob
-            );
-            if args.sparse {
-                for member in &g.members {
-                    let local_abs = ctx.project_root.join(member);
-                    if should_skip_for_sparse(&local_abs, true) {
-                        println!("    - {} [skip: parent directory missing]", member);
-                    }
-                }
-            }
-        }
         return Ok(());
     }
 
@@ -121,7 +115,7 @@ pub async fn run(args: PullArgs) -> Result<()> {
         ),
     };
 
-    let total = mappings.len() + groups.iter().map(|g| g.members.len()).sum::<usize>();
+    let total = mappings.len();
 
     // Resolve the effective decryption key by probing known candidates against the
     // first available ciphertext. This prevents stale-source precedence issues.
@@ -132,9 +126,6 @@ pub async fn run(args: PullArgs) -> Result<()> {
         let remote = remote_path(&ctx.project, env_name, &flat);
         first_probe_ciphertext = Some(github.pull_file(&remote).await?);
         first_probe_target = Some(remote);
-    } else if let Some(first_group) = groups.first() {
-        first_probe_ciphertext = Some(github.pull_file(&first_group.remote_blob).await?);
-        first_probe_target = Some(first_group.remote_blob.clone());
     }
 
     let candidates = key_candidates(&chain, Some(env_name), &key_hex, &primary_source);
@@ -285,45 +276,6 @@ pub async fn run(args: PullArgs) -> Result<()> {
             continue;
         }
         write_file!(&local_abs, &plaintext);
-    }
-
-    for group in &groups {
-        pb.set_message(format!("group:{}", group.name));
-        let ciphertext = if first_probe_target.as_deref() == Some(group.remote_blob.as_str()) {
-            first_probe_ciphertext.clone().unwrap_or_default()
-        } else {
-            github.pull_file(&group.remote_blob).await?
-        };
-        // Cache group blob to .latch/ so subscribe-intent members can commit offline.
-        let cached = local_group_blob_path(&ctx.project_root, env_name, &group.name);
-        if let Some(p) = cached.parent() {
-            std::fs::create_dir_all(p)?;
-        }
-        std::fs::write(&cached, &ciphertext)?;
-        let plaintext = decrypt_with_candidates(
-            &ciphertext,
-            &group.remote_blob,
-            &key,
-            &key_source,
-            &parsed_candidates,
-        )?;
-
-        for member_path in &group.members {
-            let local_abs = ctx.project_root.join(member_path);
-            pb.set_message(member_path.clone());
-            if should_skip_for_sparse(&local_abs, args.sparse) {
-                pb.suspend(|| {
-                    println!(
-                        "  skipping {} (parent directory missing)",
-                        local_abs.display()
-                    );
-                });
-                skipped += 1;
-                pb.inc(1);
-                continue;
-            }
-            write_file!(&local_abs, &plaintext);
-        }
     }
 
     pb.finish_with_message("Pull complete");

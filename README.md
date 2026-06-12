@@ -16,7 +16,7 @@ Latch keeps your team's secrets out of application repositories by encrypting ev
 - **Three-Step Workflow** — Separate `commit` (encrypt), `push` (upload), `pull` (download) phases for flexibility.
 - **Offline-First** — Commit and rotate secrets without internet; sync when connectivity is restored.
 - **Multi-Environment Keys** — Isolate dev, staging, and prod with separate encryption keys.
-- **Clone Groups** — Multiple `.env` files can share one encrypted blob via pragmas.
+- **Clone Groups** — Temporarily disabled while reliability fixes are in progress.
 - **Full Versioning** — GitHub commit history provides complete rollback via `latch history` and `latch rollback`.
 - **Template Expansion** — Reference variables within `.env` files: `DATABASE_URL=postgres://${DB_HOST}:${DB_PORT}/db`
 - **Example Generation** — Auto-generates `.env.example` files (keys only, no secrets).
@@ -410,7 +410,7 @@ latch commit [--env <env>]
 
 **What it does:**
 1. Walks the project tree using `.latchignore` rules. `.gitignore` does not suppress `.env` discovery.
-2. Resolves clone groups (see [Clone groups](#clone-groups)). Subscribe-intent members read from the `.latch/` cache populated by a previous `latch pull`.
+2. Treats each discovered `.env` file as a standalone encrypted blob (clone groups temporarily disabled).
 3. Encrypts each discovered `.env` file with XChaCha20-Poly1305.
 4. Writes each ciphertext to `.latch/<env>/<flat-name>.enc`.
 5. Generates a `.env.example` next to each `.env` file (values stripped, keys and comments kept).
@@ -1034,7 +1034,7 @@ This separation enables:
 - Offline commits (no internet required)
 - Secure key never leaves your machine
 - CI/CD only needs PAT (no encryption key exposure)
-- Clone groups to share secrets between `.env` files
+- Predictable one-file-per-blob behavior across machines
 
 ### Encryption Pipeline
 
@@ -1052,6 +1052,24 @@ GitHub (encrypted storage)
 ```
 
 ### Clone Groups
+
+Clone groups are **temporarily disabled**.
+
+Current behavior:
+- `latch commit` stages every `.env` file as a standalone encrypted blob.
+- `latch pull` and `latch status` process standalone mappings only.
+- `latch group` commands return a temporary-disabled message.
+
+To migrate an environment that previously used groups:
+
+```bash
+latch commit --env dev
+latch push --env dev --force
+```
+
+After this, all tracked files for that env are stored and pulled as standalone items.
+
+Legacy reference (when clone groups are re-enabled):
 
 Multiple `.env` files can share one encrypted blob via pragmas:
 

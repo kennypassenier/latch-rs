@@ -154,6 +154,7 @@ pub fn write_example(env_path: &Path, content: &str) -> Result<()> {
 /// // A file whose first line is "# latch:group=promtail_config" would return
 /// // Some("promtail_config").
 /// ```
+#[allow(dead_code)]
 pub fn read_pragma(path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     let first = content.lines().next()?;

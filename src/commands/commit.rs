@@ -12,7 +12,7 @@ use crate::{
     crypto::{decrypt, encrypt, parse_key},
     discovery::{
         flatten_path, generate_example, has_key_value_pairs, local_blob_path,
-        local_group_blob_path, read_pragma, scan_env_files, write_example,
+        local_group_blob_path, scan_env_files, write_example,
     },
     manifest::{CloneGroup, FileMapping, Manifest},
 };
@@ -197,25 +197,19 @@ pub async fn run(env_name: &str) -> Result<()> {
         return Ok(());
     }
 
-    let mut raw_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let raw_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
     let mut standalone_paths: Vec<PathBuf> = Vec::new();
 
     for abs_path in &all_files {
-        match read_pragma(abs_path) {
-            Some(group_name) => raw_groups
-                .entry(group_name)
-                .or_default()
-                .push(abs_path.clone()),
-            None => standalone_paths.push(abs_path.clone()),
-        }
+        // TEMPORARY: clone groups are disabled; stage every .env as standalone.
+        standalone_paths.push(abs_path.clone());
     }
 
     let total_ops = standalone_paths.len() + raw_groups.len();
     println!(
-        "Found {} .env file(s) ({} standalone, {} group(s)) - encrypting to .latch/ (env: {})",
+        "Found {} .env file(s) ({} standalone, groups disabled) - encrypting to .latch/ (env: {})",
         all_files.len(),
         standalone_paths.len(),
-        raw_groups.len(),
         env_name
     );
 
