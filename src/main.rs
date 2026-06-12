@@ -86,6 +86,22 @@ enum Commands {
         #[arg(long, short, default_value = "dev")]
         env: String,
 
+        /// GitHub PAT for one-shot pulls without persisted credentials.
+        #[arg(long = "PAT", alias = "pat")]
+        pat: Option<String>,
+
+        /// Encryption key for one-shot pulls without persisted credentials.
+        #[arg(long = "KEY", alias = "key")]
+        key: Option<String>,
+
+        /// Secrets repo in owner/repo format for one-shot pulls.
+        #[arg(long = "REPO", alias = "repo")]
+        repo: Option<String>,
+
+        /// Project name for one-shot pulls when no .latch/config.toml is present.
+        #[arg(long)]
+        project: Option<String>,
+
         /// Preview what would be written without touching the filesystem.
         #[arg(long)]
         dry_run: bool,
@@ -354,12 +370,25 @@ async fn main() -> anyhow::Result<()> {
         Commands::Push { env, force } => commands::push::run(&env, force).await,
         Commands::Pull {
             env,
+            pat,
+            key,
+            repo,
+            project,
             dry_run,
             sparse,
             mode,
         } => {
             let sparse_mode = sparse || matches!(mode, Some(PullMode::Sparse));
-            commands::pull::run(&env, dry_run, sparse_mode).await
+            commands::pull::run(commands::pull::PullArgs {
+                env,
+                pat,
+                key,
+                repo,
+                project,
+                dry_run,
+                sparse: sparse_mode,
+            })
+            .await
         }
         Commands::Status { env } => commands::status::run(&env).await,
         Commands::Rotate => commands::rotate::run().await,

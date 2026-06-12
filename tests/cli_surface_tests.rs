@@ -70,6 +70,21 @@ fn alias_unlock_maps_to_pull_help() {
 }
 
 #[test]
+fn pull_help_lists_one_shot_overrides() {
+    let (ok, out, err) = run_latch(&["pull", "--help"]);
+    assert!(ok, "pull --help should succeed, stderr={}", err);
+
+    for flag in ["--PAT", "--KEY", "--REPO", "--project", "--sparse"] {
+        assert!(
+            out.contains(flag),
+            "pull help should list '{}'.\nOutput:\n{}",
+            flag,
+            out
+        );
+    }
+}
+
+#[test]
 fn subcommand_help_pages_are_accessible() {
     let cases = [
         ["clone", "--help"],
