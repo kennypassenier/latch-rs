@@ -20,7 +20,9 @@ const BUILD_VERSION: &str = match option_env!("LATCH_BUILD_VERSION") {
 struct ContentsResponse {
     sha: String,
     /// Base64-encoded file content (GitHub inserts newlines every 60 chars).
-    content: String,
+    /// `None` for files larger than 1 MB.
+    #[serde(default)]
+    content: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -164,8 +166,10 @@ impl RemoteStorage for GitHubClient {
             .client
             .get(self.contents_url(path))
             .header("Authorization", self.auth_header())
-            // Request raw bytes to avoid JSON `content` truncation for larger files.
-            .header("Accept", "application/vnd.github.raw")
+            // Use JSON media type so the content is base64-encoded text.
+            // This avoids any CDN compression / binary-encoding issues that
+            // can silently corrupt ciphertext when fetching raw binary blobs.
+            .header("Accept", ACCEPT_HEADER)
             .header("X-GitHub-Api-Version", API_VERSION_HEADER)
             .send()
             .await
@@ -180,11 +184,24 @@ impl RemoteStorage for GitHubClient {
             bail!("GitHub GET {} returned {}: {}", path, status, text);
         }
 
-        let bytes = resp
-            .bytes()
+        let body: ContentsResponse = resp
+            .json()
             .await
-            .context("Reading raw GitHub file bytes")?;
-        Ok(bytes.to_vec())
+            .context("Parsing GitHub contents response")?;
+
+        let encoded = body.content.ok_or_else(|| {
+            anyhow::anyhow!(
+                "GitHub returned no content for '{}'. File may exceed 1 MB or be empty.",
+                path
+            )
+        })?;
+
+        // GitHub injects a newline every 60 chars in the base64 payload.
+        let clean = encoded.replace(['\n', '\r'], "");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&clean)
+            .with_context(|| format!("Decoding base64 content for '{}'", path))?;
+        Ok(bytes)
     }
 
     async fn get_sha(&self, path: &str) -> Result<Option<String>> {
@@ -338,11 +355,14 @@ impl RemoteStorageExt for GitHubClient {
         }
 
         let body: ContentsResponse = resp.json().await.context("Parsing GitHub contents")?;
-        let clean: String = body
-            .content
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect();
+        let encoded = body.content.ok_or_else(|| {
+            anyhow::anyhow!(
+                "GitHub returned no content at ref '{}' for '{}'",
+                git_ref,
+                path
+            )
+        })?;
+        let clean: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&clean)
             .context("Base64-decoding GitHub file content")?;
