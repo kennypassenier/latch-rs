@@ -474,6 +474,7 @@ Pull ciphertext from the secrets repository, cache it to `.latch/`, and decrypt 
 
 ```
 latch pull [--env <env>] [--dry-run] [--sparse]
+latch pull [--env <env>] [--PAT <pat>] [--KEY <key>] [--REPO <repo>] [--project <name>] [--sparse]
 latch pull sparse [--env <env>] [--dry-run]
 ```
 
@@ -482,6 +483,30 @@ latch pull sparse [--env <env>] [--dry-run]
 | `--env` / `-e` | `dev` | Environment to pull from. |
 | `--dry-run` | off | Print what would be written without touching the filesystem. |
 | `--sparse` | off | Only write `.env` files whose parent directory already exists (useful for sparse checkouts). |
+| `--PAT` / `--pat` | (from credentials) | **One-shot mode:** GitHub Personal Access Token. Bypasses stored credentials. |
+| `--KEY` / `--key` | (from credentials) | **One-shot mode:** Hex-encoded 32-byte encryption key. Bypasses stored credentials. |
+| `--REPO` / `--repo` | (from config) | **One-shot mode:** Secrets repository in `owner/repo` format. Overrides `.latch/config.toml`. |
+| `--project` | (from config) | **One-shot mode:** Project name. Required when no `.latch/config.toml` exists. |
+
+#### One-Shot Pull (No Stored Credentials)
+
+To pull secrets without storing credentials or requiring `.latch/config.toml`, provide all required flags explicitly:
+
+```bash
+latch pull \
+  --env prod \
+  --PAT <github-pat> \
+  --KEY <64-char-hex-key> \
+  --REPO owner/secrets \
+  --project myapp
+```
+
+This mode is ideal for:
+- **CI/CD pipelines** — Pass credentials via environment variables
+- **Ephemeral containers** — One-shot pulls without persisted state
+- **Machine cloning** — Transfer all arguments instead of storing config
+
+The `--sparse` flag works with one-shot pulls to skip directories that don't exist locally.
 
 If a local `.env` file already exists and its content differs from the remote, Latch shows an inline diff and asks for confirmation before overwriting.
 
@@ -489,10 +514,10 @@ After pulling, encrypted blobs are cached to `.latch/<env>/` and `.latch/staging
 
 **Alias:** `unlock`
 
-**Example:**
+**Examples:**
 
 ```bash
-# Pull dev secrets
+# Pull dev secrets (traditional)
 latch pull
 
 # Preview what prod pull would do (no writes)
@@ -506,6 +531,22 @@ latch pull --sparse
 
 # Equivalent sparse mode alias
 latch pull sparse
+
+# One-shot pull without stored credentials
+latch pull \
+  --env prod \
+  --PAT ghp_xxxxxxxxxxxxxxxxxxxx \
+  --KEY c49217b5617137681b31801d5f02814147450d832b7d584bd2dd9f4480b8b1e8 \
+  --REPO kennypassenier/secrets \
+  --project homelab
+
+# One-shot pull with sparse mode (skip non-existent directories)
+latch pull \
+  --sparse \
+  --PAT $GITHUB_PAT \
+  --KEY $LATCH_KEY \
+  --REPO $SECRETS_REPO \
+  --project $PROJECT_NAME
 ```
 
 ---
