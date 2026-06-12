@@ -122,8 +122,9 @@ latch --help
 latch update
 ```
 
-`latch update` currently downloads the Linux x86_64 release asset (`latch-linux-x86_64.tar.gz`),
-extracts the executable named `latch`, and replaces your managed install path binary (for example `~/.local/bin/latch`).
+`latch update` currently downloads the Linux x86_64 release asset, preferring
+`latch-linux-x86_64-lxc.tar.gz` and falling back to `latch-linux-x86_64.tar.gz`.
+It extracts the executable named `latch`, and replaces your managed install path binary (for example `~/.local/bin/latch`).
 Your command remains `latch` after every update.
 
 ---
@@ -708,7 +709,7 @@ latch update
 
 Current support:
 1. Linux x86_64.
-2. The downloaded asset is `latch-linux-x86_64.tar.gz`.
+2. Download priority: `latch-linux-x86_64-lxc.tar.gz`, then `latch-linux-x86_64.tar.gz`.
 3. The installed executable is still named `latch`.
 
 After one manual install to a managed PATH location, future updates can be done with `latch update`.

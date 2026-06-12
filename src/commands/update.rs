@@ -26,7 +26,7 @@ struct ReleaseAsset {
 
 pub async fn run() -> Result<()> {
     let (owner, repo) = parse_repository(REPOSITORY_URL)?;
-    let asset_name = target_asset_name()?;
+    let asset_names = target_asset_names()?;
 
     let client = Client::builder()
         .user_agent(format!("latch-rs/{}", BUILD_VERSION))
@@ -34,15 +34,14 @@ pub async fn run() -> Result<()> {
         .context("Building HTTP client")?;
 
     let release = fetch_latest_release(&client, &owner, &repo).await?;
-    let asset = release
-        .assets
+    let asset = asset_names
         .iter()
-        .find(|asset| asset.name == asset_name)
+        .find_map(|name| release.assets.iter().find(|asset| asset.name == **name))
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "Latest release {} does not contain asset '{}'.",
+                "Latest release {} does not contain any supported assets: {}.",
                 release.tag_name,
-                asset_name
+                asset_names.join(", ")
             )
         })?;
 
@@ -162,10 +161,15 @@ fn parse_repository(url: &str) -> Result<(String, String)> {
     Ok((owner.to_string(), repo.to_string()))
 }
 
-fn target_asset_name() -> Result<&'static str> {
+fn target_asset_names() -> Result<Vec<&'static str>> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        Ok("latch-linux-x86_64.tar.gz")
+        // Prefer the Debian 12 / glibc 2.36-compatible build. It runs on both
+        // older LXC environments and newer host systems.
+        Ok(vec![
+            "latch-linux-x86_64-lxc.tar.gz",
+            "latch-linux-x86_64.tar.gz",
+        ])
     }
 
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
