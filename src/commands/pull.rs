@@ -513,12 +513,15 @@ mod tests {
         .save_in(tmp.path())
         .expect("save config");
 
+        // Resolve context using local config without explicit PAT/key/repo args.
+        // The PAT should be resolved from the fallback chain (env, keyring, global config).
         let ctx = resolve_pull_context(tmp.path(), &base_args()).expect("config context");
 
         assert_eq!(ctx.project, "demo");
         assert_eq!(ctx.secrets_repo, "owner/secrets");
         assert_eq!(ctx.project_root, tmp.path());
-        assert!(ctx.key.is_none());
+        assert!(!ctx.pat.is_empty()); // Verify PAT was resolved from fallback chain
+        assert!(ctx.key.is_none()); // Key not provided via args
     }
 
     #[test]
