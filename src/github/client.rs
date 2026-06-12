@@ -164,7 +164,8 @@ impl RemoteStorage for GitHubClient {
             .client
             .get(self.contents_url(path))
             .header("Authorization", self.auth_header())
-            .header("Accept", ACCEPT_HEADER)
+            // Request raw bytes to avoid JSON `content` truncation for larger files.
+            .header("Accept", "application/vnd.github.raw")
             .header("X-GitHub-Api-Version", API_VERSION_HEADER)
             .send()
             .await
@@ -179,15 +180,11 @@ impl RemoteStorage for GitHubClient {
             bail!("GitHub GET {} returned {}: {}", path, status, text);
         }
 
-        let body: ContentsResponse = resp
-            .json()
+        let bytes = resp
+            .bytes()
             .await
-            .context("Parsing GitHub contents response")?;
-        let clean = body.content.replace(['\n', '\r'], "");
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&clean)
-            .context("Decoding base64 content from GitHub")?;
-        Ok(bytes)
+            .context("Reading raw GitHub file bytes")?;
+        Ok(bytes.to_vec())
     }
 
     async fn get_sha(&self, path: &str) -> Result<Option<String>> {
