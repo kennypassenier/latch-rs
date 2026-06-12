@@ -84,6 +84,7 @@ struct DeleteBody<'a> {
 /// Thin wrapper around the GitHub Contents API.
 pub struct GitHubClient {
     client: Client,
+    api_base: String,
     owner: String,
     repo: String,
     pat: String,
@@ -92,6 +93,10 @@ pub struct GitHubClient {
 impl GitHubClient {
     /// `secrets_repo` should be in `owner/repo` format.
     pub fn new(secrets_repo: &str, pat: &str) -> Result<Self> {
+        Self::new_with_api_base(secrets_repo, pat, API_BASE)
+    }
+
+    fn new_with_api_base(secrets_repo: &str, pat: &str, api_base: &str) -> Result<Self> {
         let (owner, repo) = secrets_repo.split_once('/').ok_or_else(|| {
             anyhow::anyhow!("secrets_repo must be 'owner/repo', got '{}'", secrets_repo)
         })?;
@@ -103,27 +108,36 @@ impl GitHubClient {
 
         Ok(Self {
             client,
+            api_base: api_base.to_string(),
             owner: owner.to_string(),
             repo: repo.to_string(),
             pat: pat.to_string(),
         })
     }
 
+    #[cfg(test)]
+    fn new_for_test(secrets_repo: &str, pat: &str, api_base: &str) -> Result<Self> {
+        Self::new_with_api_base(secrets_repo, pat, api_base)
+    }
+
     fn contents_url(&self, path: &str) -> String {
         format!(
             "{}/repos/{}/{}/contents/{}",
-            API_BASE, self.owner, self.repo, path
+            self.api_base, self.owner, self.repo, path
         )
     }
 
     fn commits_url(&self) -> String {
-        format!("{}/repos/{}/{}/commits", API_BASE, self.owner, self.repo)
+        format!(
+            "{}/repos/{}/{}/commits",
+            self.api_base, self.owner, self.repo
+        )
     }
 
     fn blob_url(&self, sha: &str) -> String {
         format!(
             "{}/repos/{}/{}/git/blobs/{}",
-            API_BASE, self.owner, self.repo, sha
+            self.api_base, self.owner, self.repo, sha
         )
     }
 
@@ -131,7 +145,7 @@ impl GitHubClient {
     fn tree_url(&self, git_ref: &str) -> String {
         format!(
             "{}/repos/{}/{}/git/trees/{}?recursive=1",
-            API_BASE, self.owner, self.repo, git_ref
+            self.api_base, self.owner, self.repo, git_ref
         )
     }
 
@@ -371,5 +385,74 @@ impl RemoteStorageExt for GitHubClient {
             .decode(&clean)
             .context("Base64-decoding GitHub file content")?;
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GitHubClient, RemoteStorage};
+    use base64::Engine;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    #[tokio::test]
+    async fn pull_file_fetches_blob_bytes_by_sha() {
+        let ciphertext = vec![0x82, 0x28, 0xcf, 0x13, 0x7a, 0xd6, 0xe8, 0x1d, 0x25, 0x0a];
+        let sha = "deadbeef1234";
+        let encoded_blob = base64::engine::general_purpose::STANDARD.encode(&ciphertext);
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("test server addr");
+
+        let server = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().expect("accept connection");
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).expect("read request");
+                let req = String::from_utf8_lossy(&buf[..n]);
+
+                if req.starts_with("GET /repos/owner/repo/contents/path/to.env.enc ") {
+                    let body = format!(r#"{{"sha":"{}"}}"#, sha);
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .expect("write contents response");
+                } else if req.starts_with(&format!("GET /repos/owner/repo/git/blobs/{} ", sha)) {
+                    let body = format!(r#"{{"content":"{}"}}"#, encoded_blob);
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .expect("write blob response");
+                } else {
+                    let body = format!("unexpected request: {}", req.lines().next().unwrap_or(""));
+                    write!(
+                        stream,
+                        "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .expect("write 404 response");
+                }
+            }
+        });
+
+        let client =
+            GitHubClient::new_for_test("owner/repo", "test-pat", &format!("http://{}", addr))
+                .expect("construct client");
+
+        let pulled = client
+            .pull_file("path/to.env.enc")
+            .await
+            .expect("pull file through blob api");
+
+        assert_eq!(pulled, ciphertext);
+        server.join().expect("server join");
     }
 }
