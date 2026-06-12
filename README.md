@@ -582,6 +582,35 @@ latch status --env staging
 
 ---
 
+### latch state
+
+Inspect resolved credential sources and optionally print a one-shot pull command for another machine.
+
+```
+latch state [--env <env>] [--pull-command] [--reveal]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--env` / `-e` | `dev` | Environment label used for env-specific key slots. |
+| `--pull-command` | off | Print a ready-to-run one-shot `latch pull` command for the current project/env. |
+| `--reveal` | off | Reveal raw PAT/KEY values in the printed command (sensitive). |
+
+**Examples:**
+
+```bash
+# Inspect source chain with masked values
+latch state --env prod
+
+# Print one-shot pull command with redacted secrets
+latch state --env prod --pull-command
+
+# Print one-shot pull command with exact PAT/KEY values
+latch state --env prod --pull-command --reveal
+```
+
+---
+
 ### latch rotate
 
 Re-encrypt all secrets with a new key.

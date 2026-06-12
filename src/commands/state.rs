@@ -5,13 +5,13 @@ use std::env;
 use crate::{
     config::{global::GlobalConfig, project::ProjectConfig},
     credentials::{
-        GLOBAL_KEY_SLOT, GLOBAL_PAT_SLOT, GLOBAL_SECRETS_REPO_SLOT,
+        FallbackChain, GLOBAL_KEY_SLOT, GLOBAL_PAT_SLOT, GLOBAL_SECRETS_REPO_SLOT,
         keyring_provider::KeyringProvider,
     },
     crypto::parse_key,
 };
 
-pub async fn run(env_name: &str) -> Result<()> {
+pub async fn run(env_name: &str, pull_command: bool, reveal: bool) -> Result<()> {
     let cwd = env::current_dir()?;
 
     println!("Latch state");
@@ -88,6 +88,44 @@ pub async fn run(env_name: &str) -> Result<()> {
         );
     }
 
+    if pull_command {
+        println!("\nOne-shot pull command");
+        let (cfg, _root) = ProjectConfig::find_and_load(&cwd).map_err(|_| {
+            anyhow::anyhow!(
+                "No .latch/config.toml found from cwd upward. Run this command from a project folder initialized with Latch."
+            )
+        })?;
+
+        let chain = FallbackChain::new(&cfg.name);
+        let pat = chain.get_pat()?;
+        let key = chain.get_key_for_env(Some(env_name))?;
+
+        let shown_pat = if reveal {
+            pat
+        } else {
+            format!("<redacted:{}>", mask_compact(&pat))
+        };
+        let shown_key = if reveal {
+            key
+        } else {
+            format!("<redacted:{}>", mask_compact(&key))
+        };
+
+        println!("latch pull \\");
+        println!("  --env {} \\", shell_quote(env_name));
+        println!("  --sparse \\");
+        println!("  --PAT {} \\", shell_quote(&shown_pat));
+        println!("  --KEY {} \\", shell_quote(&shown_key));
+        println!("  --REPO {} \\", shell_quote(&cfg.secrets_repo));
+        println!("  --project {}", shell_quote(&cfg.name));
+
+        if !reveal {
+            println!(
+                "\nUse --reveal to print raw PAT/KEY values (sensitive; avoid shell history leaks)."
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -132,6 +170,18 @@ fn mask(s: &str) -> String {
         return "****".to_string();
     }
     format!("{}...{} (len={})", &s[..4], &s[s.len() - 4..], s.len())
+}
+
+fn mask_compact(s: &str) -> String {
+    if s.len() <= 8 {
+        return "****".to_string();
+    }
+    format!("{}...{}", &s[..4], &s[s.len() - 4..])
+}
+
+fn shell_quote(value: &str) -> String {
+    let escaped = value.replace('"', "\\\"");
+    format!("\"{}\"", escaped)
 }
 
 fn key_fingerprint(key: &[u8; 32]) -> String {

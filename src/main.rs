@@ -129,6 +129,14 @@ enum Commands {
         /// Environment label used when checking env-specific keyring slots.
         #[arg(long, short, default_value = "dev")]
         env: String,
+
+        /// Print a ready-to-run one-shot `latch pull` command for this env.
+        #[arg(long)]
+        pull_command: bool,
+
+        /// Reveal raw PAT/KEY values in output (sensitive).
+        #[arg(long)]
+        reveal: bool,
     },
 
     /// Reset Latch credentials/caches while keeping project .latch/config.toml metadata.
@@ -392,7 +400,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Status { env } => commands::status::run(&env).await,
         Commands::Rotate => commands::rotate::run().await,
-        Commands::State { env } => commands::state::run(&env).await,
+        Commands::State {
+            env,
+            pull_command,
+            reveal,
+        } => commands::state::run(&env, pull_command, reveal).await,
         Commands::Reset => commands::reset::run().await,
         Commands::Run { env, command } => {
             if command.is_empty() {

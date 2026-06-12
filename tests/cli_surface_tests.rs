@@ -85,6 +85,21 @@ fn pull_help_lists_one_shot_overrides() {
 }
 
 #[test]
+fn state_help_lists_pull_command_flags() {
+    let (ok, out, err) = run_latch(&["state", "--help"]);
+    assert!(ok, "state --help should succeed, stderr={}", err);
+
+    for flag in ["--pull-command", "--reveal", "--env"] {
+        assert!(
+            out.contains(flag),
+            "state help should list '{}'.\nOutput:\n{}",
+            flag,
+            out
+        );
+    }
+}
+
+#[test]
 fn subcommand_help_pages_are_accessible() {
     let cases = [
         ["clone", "--help"],
