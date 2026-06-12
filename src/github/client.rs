@@ -25,6 +25,11 @@ struct ContentsResponse {
     content: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct BlobResponse {
+    content: String,
+}
+
 #[allow(dead_code)]
 #[derive(Deserialize)]
 struct TreeItem {
@@ -115,6 +120,13 @@ impl GitHubClient {
         format!("{}/repos/{}/{}/commits", API_BASE, self.owner, self.repo)
     }
 
+    fn blob_url(&self, sha: &str) -> String {
+        format!(
+            "{}/repos/{}/{}/git/blobs/{}",
+            API_BASE, self.owner, self.repo, sha
+        )
+    }
+
     #[allow(dead_code)]
     fn tree_url(&self, git_ref: &str) -> String {
         format!(
@@ -161,46 +173,38 @@ impl RemoteStorage for GitHubClient {
     }
 
     async fn pull_file(&self, path: &str) -> Result<Vec<u8>> {
-        debug!("GET {}", path);
+        let Some(sha) = self.get_sha(path).await? else {
+            bail!("Remote file not found: {}", path);
+        };
+
+        debug!("BLOB {} ({})", path, sha);
         let resp = self
             .client
-            .get(self.contents_url(path))
+            .get(self.blob_url(&sha))
             .header("Authorization", self.auth_header())
-            // Use JSON media type so the content is base64-encoded text.
-            // This avoids any CDN compression / binary-encoding issues that
-            // can silently corrupt ciphertext when fetching raw binary blobs.
             .header("Accept", ACCEPT_HEADER)
             .header("X-GitHub-Api-Version", API_VERSION_HEADER)
             .send()
             .await
-            .context("GitHub GET request failed")?;
+            .context("GitHub blob GET request failed")?;
 
         let status = resp.status();
-        if status == StatusCode::NOT_FOUND {
-            bail!("Remote file not found: {}", path);
-        }
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            bail!("GitHub GET {} returned {}: {}", path, status, text);
+            bail!(
+                "GitHub blob GET {} ({}) returned {}: {}",
+                path,
+                sha,
+                status,
+                text
+            );
         }
 
-        let body: ContentsResponse = resp
-            .json()
-            .await
-            .context("Parsing GitHub contents response")?;
-
-        let encoded = body.content.ok_or_else(|| {
-            anyhow::anyhow!(
-                "GitHub returned no content for '{}'. File may exceed 1 MB or be empty.",
-                path
-            )
-        })?;
-
-        // GitHub injects a newline every 60 chars in the base64 payload.
-        let clean = encoded.replace(['\n', '\r'], "");
+        let body: BlobResponse = resp.json().await.context("Parsing GitHub blob response")?;
+        let clean = body.content.replace(['\n', '\r'], "");
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&clean)
-            .with_context(|| format!("Decoding base64 content for '{}'", path))?;
+            .with_context(|| format!("Decoding blob content for '{}'", path))?;
         Ok(bytes)
     }
 
