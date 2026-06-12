@@ -89,7 +89,7 @@ fn state_help_lists_pull_command_flags() {
     let (ok, out, err) = run_latch(&["state", "--help"]);
     assert!(ok, "state --help should succeed, stderr={}", err);
 
-    for flag in ["--pull-command", "--reveal", "--env"] {
+    for flag in ["--pull-command", "--reveal", "--sparse", "--env"] {
         assert!(
             out.contains(flag),
             "state help should list '{}'.\nOutput:\n{}",

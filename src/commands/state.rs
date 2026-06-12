@@ -11,7 +11,7 @@ use crate::{
     crypto::parse_key,
 };
 
-pub async fn run(env_name: &str, pull_command: bool, reveal: bool) -> Result<()> {
+pub async fn run(env_name: &str, pull_command: bool, reveal: bool, sparse: bool) -> Result<()> {
     let cwd = env::current_dir()?;
 
     println!("Latch state");
@@ -113,7 +113,9 @@ pub async fn run(env_name: &str, pull_command: bool, reveal: bool) -> Result<()>
 
         println!("latch pull \\");
         println!("  --env {} \\", shell_quote(env_name));
-        println!("  --sparse \\");
+        if sparse {
+            println!("  --sparse \\");
+        }
         println!("  --PAT {} \\", shell_quote(&shown_pat));
         println!("  --KEY {} \\", shell_quote(&shown_key));
         println!("  --REPO {} \\", shell_quote(&cfg.secrets_repo));

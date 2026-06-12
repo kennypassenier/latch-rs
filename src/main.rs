@@ -137,6 +137,10 @@ enum Commands {
         /// Reveal raw PAT/KEY values in output (sensitive).
         #[arg(long)]
         reveal: bool,
+
+        /// Include `--sparse` in the generated one-shot pull command.
+        #[arg(long)]
+        sparse: bool,
     },
 
     /// Reset Latch credentials/caches while keeping project .latch/config.toml metadata.
@@ -404,7 +408,8 @@ async fn main() -> anyhow::Result<()> {
             env,
             pull_command,
             reveal,
-        } => commands::state::run(&env, pull_command, reveal).await,
+            sparse,
+        } => commands::state::run(&env, pull_command, reveal, sparse).await,
         Commands::Reset => commands::reset::run().await,
         Commands::Run { env, command } => {
             if command.is_empty() {

@@ -587,7 +587,7 @@ latch status --env staging
 Inspect resolved credential sources and optionally print a one-shot pull command for another machine.
 
 ```
-latch state [--env <env>] [--pull-command] [--reveal]
+latch state [--env <env>] [--pull-command] [--reveal] [--sparse]
 ```
 
 | Flag | Default | Description |
@@ -595,6 +595,7 @@ latch state [--env <env>] [--pull-command] [--reveal]
 | `--env` / `-e` | `dev` | Environment label used for env-specific key slots. |
 | `--pull-command` | off | Print a ready-to-run one-shot `latch pull` command for the current project/env. |
 | `--reveal` | off | Reveal raw PAT/KEY values in the printed command (sensitive). |
+| `--sparse` | off | Include `--sparse` in the generated one-shot pull command. |
 
 **Examples:**
 
@@ -607,6 +608,9 @@ latch state --env prod --pull-command
 
 # Print one-shot pull command with exact PAT/KEY values
 latch state --env prod --pull-command --reveal
+
+# Print one-shot pull command with sparse mode included
+latch state --env prod --pull-command --reveal --sparse
 ```
 
 ---
