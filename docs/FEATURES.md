@@ -238,7 +238,55 @@ plaintext ever on physical disk; interrupted edit leaves nothing behind.
 ### S7 · Second backend (local dir / rsync) — **Won't**
 GitHub suffices; not worth the abstraction layer.
 
+## G · Management client (proposed by Kenny, feature set rated 2026-08-11)
+
+One interactive client managing the latch installation itself — a layer on
+top of the same core the CLI uses, never a second implementation. Built on
+the homelab TUI foundation: Elm-style, mockable backend, snapshot-tested,
+AZERTY-aware. Technology choice (terminal TUI vs. GUI) = AR8.
+
+### G1 · The management client (`latch ui`) — **Must**
+- **Auto**: snapshot tests per screen against a scripted backend; the UI
+  calls the same core functions as the CLI (no parallel logic — enforced
+  by core owning all operations).
+
+### G2 · Project dashboard — **Must**
+All projects with sync state, linked dir, env count, last push/pull, key
+presence; ENTER opens detail.
+- **Auto**: snapshot with a fixture world (clean/modified/behind projects).
+
+### G3 · Key & environment matrix — **Must**
+Projects × environments grid: which key is present from which source
+(keyring/file/env), what's missing on this machine.
+- **Auto**: fixture with mixed sources renders correct per-cell markers.
+
+### G4 · Secrets browser/editor — **Must**
+Masked values (reveal per row), add/edit/remove variables, save = encrypted
+commit via the W11 machinery; diff visible before push.
+- **Auto**: values never in the render buffer unless revealed; edit →
+  commit round-trip against mock backend.
+
+### G5 · Sync operations from the client — **Must**
+One-key commit/push/pull/diff with live progress; S4 conflicts become an
+interactive choice (pull first / view diff / overwrite deliberately).
+- **Auto**: conflict fixture → choice dialog rendered, no silent overwrite.
+
+### G6 · History browser + rollback — **Must**
+Version list (when, which files), masked diff against now, rollback with
+confirmation.
+- **Auto**: fixture history renders; rollback emits the right core call.
+
+### G7 · Machine-clone wizard — **Should**
+Guided M2: target, scope, verify-code, progress, end-check.
+
+### G8 · Doctor & verify panel — **Should**
+W8 state + one-key S6 audit, per-file green/red with remedy.
+
+### G9 · Onboarding & admin flows — **Should**
+Guided login (M1, live validation), project linking (W1), rotation with
+consequences explained (K3), key backup/restore (K6).
+
 ---
-Final tally: 23 Must · 9 Should · 1 Could · 2 Won't (34 features).
+Final tally: 29 Must · 12 Should · 1 Could · 2 Won't (44 features).
 Next: architecture decisions (phase 3), then testing & documentation
 (phase 4).
