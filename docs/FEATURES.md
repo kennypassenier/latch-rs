@@ -191,6 +191,54 @@ verify the new binary runs (`--version`) before replacing.
 ### M6 · APT repository — **Won't**
 GitHub Releases + M5 cover distribution; not worth hosting a signed repo.
 
+## Proposed in the redesign round (rated 2026-08-11)
+
+### K6 · Key backup / escrow export — **Must**
+All project keys exported as one passphrase-encrypted file (or printable
+text) for offline safekeeping — closes the "all machines lost = repo
+forever unreadable" gap. `latch key backup` / `latch key restore`.
+- **Auto**: backup → wipe credential store → restore → everything decrypts;
+  wrong passphrase → hard error; backup content proven ciphertext-only.
+
+### M7 · Non-interactive / CI mode — **Must**
+Global `--yes`/non-interactive support + env-driven answers; without a TTY
+every would-be prompt is a hard error, never a hang. The v1 sync-stall
+lesson.
+- **Auto**: every command run without TTY either completes or fails loudly
+  (exhaustive over the CLI surface); no prompt path reachable.
+
+### S6 · `latch verify` — repo-wide integrity audit — **Must**
+Verify every remote ciphertext decrypts and authenticates with current
+keys, manifest consistent, without writing anything.
+- **Auto**: corrupt one remote file in the mock → verify names exactly that
+  file; clean repo → exit 0.
+
+### D7 · Shell completions — **Must**
+clap-generated bash/zsh/fish completions.
+- **Auto**: generation succeeds for all three shells (snapshot).
+
+### S5 · Local cache + offline pull/run — **Should**
+Every successful pull caches the ciphertexts locally; `latch run` and
+`pull --offline` keep working through outages with a loud "using cached
+state from N days ago". First pull still needs network.
+- **Auto**: pull → kill network (mock) → run still injects; staleness
+  warning asserted; cache is ciphertext-only.
+
+### W10 · `latch diff` — **Should**
+Masked-by-default diff (key names + changed/added/removed) between local,
+committed, and remote; `--reveal` for values.
+- **Auto**: golden diff output; values provably absent without --reveal.
+
+### W11 · `latch edit` — **Should**
+Decrypt → $EDITOR via tmpfs → auto-commit on close → optional push. Zero
+plaintext ever on physical disk; interrupted edit leaves nothing behind.
+- **Auto**: temp path is on tmpfs (or refused); simulated editor writes →
+  new ciphertext committed; simulated crash → no residue.
+
+### S7 · Second backend (local dir / rsync) — **Won't**
+GitHub suffices; not worth the abstraction layer.
+
 ---
-Tally: 18 Must · 6 Should · 1 Could · 1 Won't. Next: Claude's proposed
-features (phase 2), then architecture decisions (phase 3).
+Final tally: 23 Must · 9 Should · 1 Could · 2 Won't (34 features).
+Next: architecture decisions (phase 3), then testing & documentation
+(phase 4).
