@@ -71,6 +71,38 @@ enum Command {
         #[arg(long, default_value = "dev")]
         env: String,
     },
+    /// Run a command with secrets injected into its environment — nothing
+    /// ever touches disk (W6). Works offline on the cached clone (S5).
+    Run {
+        #[arg(long, default_value = "dev")]
+        env: String,
+        /// The command and its arguments (after --).
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
+    /// List the versions of this project's secrets (S3).
+    History,
+    /// Restore this project's secrets to an older version in the clone;
+    /// push to publish, pull to apply locally (S3).
+    Rollback {
+        reference: String,
+        #[arg(long, default_value = "dev")]
+        env: String,
+    },
+    /// Authenticate every ciphertext in the repository without writing
+    /// anything (S6).
+    Verify {
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Where does every credential come from, and what is missing? (W8)
+    State,
+    /// Wipe the local clone + session cache; credentials and config stay (W9).
+    Reset {
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 fn main() {
@@ -157,6 +189,91 @@ fn main() {
                 }
             );
         }),
+        Command::Run { env, command } => {
+            let (prog, rest) = command.split_first().expect("clap requires at least one");
+            let arg_refs: Vec<&str> = rest.iter().map(|s| s.as_str()).collect();
+            match latch_core::ops::consume::run(&platform, &cwd, &env, prog, &arg_refs) {
+                Ok(out) => {
+                    if out.stale {
+                        eprintln!("(offline — using the cached clone)");
+                    }
+                    std::process::exit(out.exit_code);
+                }
+                Err(e) => Err(e),
+            }
+        }
+        Command::History => latch_core::ops::consume::history(&platform, &cwd).map(|entries| {
+            for e in &entries {
+                println!("  {}  {}  {}", e.reference, e.time_unix, e.message);
+            }
+            if entries.is_empty() {
+                println!("no history yet — push something first");
+            }
+        }),
+        Command::Rollback { reference, env } => {
+            latch_core::ops::consume::rollback(&platform, &cwd, &env, &reference).map(|()| {
+                println!(
+                    "✓ restored {} in the local clone :: 'latch push' publishes it, 'latch pull --overwrite' applies it here",
+                    reference
+                );
+            })
+        }
+        Command::Verify { project } => {
+            latch_core::ops::consume::verify(&platform, project.as_deref()).map(|out| {
+                use latch_core::ops::consume::VerifyState as V;
+                let mut bad = 0;
+                for (rel, state) in &out.entries {
+                    match state {
+                        V::Ok => println!("  ok       {}", rel),
+                        V::Corrupt => {
+                            bad += 1;
+                            println!("  CORRUPT  {} — restore via latch history/rollback", rel)
+                        }
+                        V::NoKey { needed, generation } => println!(
+                            "  no-key   {} (needs '{}' gen {})",
+                            rel, needed, generation
+                        ),
+                        V::BadFormat(d) => {
+                            bad += 1;
+                            println!("  format   {} ({})", rel, d)
+                        }
+                    }
+                }
+                if out.stale {
+                    eprintln!("(offline — verified the cached clone)");
+                }
+                if bad > 0 {
+                    std::process::exit(1);
+                }
+            })
+        }
+        Command::State => latch_core::ops::consume::state(&platform).map(|st| {
+            println!("latch home   : {}", st.latch_home);
+            println!("repository   : {}", st.repo.as_deref().unwrap_or("(not set — latch login)"));
+            println!(
+                "PAT          : {}",
+                match st.pat {
+                    Some(s) => format!("present ({:?})", s),
+                    None => "MISSING — latch login".into(),
+                }
+            );
+            println!("keyring      : {}", if st.keyring_available { "available" } else { "unavailable (file backend)" });
+            println!("cred file    : {}", if st.cred_file { "present" } else { "none" });
+            println!("local clone  : {}", if st.clone_exists { "present" } else { "none (first sync creates it)" });
+            for pr in &st.projects {
+                println!(
+                    "project {:12} {} — key {}",
+                    pr.name,
+                    if pr.dir_exists { &pr.dir } else { "(dir missing!)" },
+                    match &pr.key {
+                        Some((src, generation)) => format!("gen {} ({:?})", generation, src),
+                        None => "MISSING".into(),
+                    }
+                );
+            }
+        }),
+        Command::Reset { yes } => latch_core::ops::consume::reset(&platform, yes)
+            .map(|()| println!("✓ local clone wiped — the next command re-clones")),
         Command::Status { env } => {
             latch_core::ops::sync::status(&platform, &cwd, &env).map(|out| {
                 use latch_core::ops::sync::FileState as S;

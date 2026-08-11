@@ -78,6 +78,13 @@ impl Files for MockFiles {
         out.sort();
         Ok(out)
     }
+    fn remove_tree(&self, path: &str) -> Result<(), LatchError> {
+        let prefix = format!("{}/", path.trim_end_matches('/'));
+        self.files
+            .borrow_mut()
+            .retain(|k, _| !k.starts_with(&prefix) && k != path);
+        Ok(())
+    }
 }
 
 pub struct MockKeyring {
@@ -219,6 +226,8 @@ pub struct MockProc {
     pub responses: RefCell<Vec<ProcResponse>>,
     pub calls: RefCell<Vec<String>>,
     pub env_log: RefCell<Vec<Vec<(String, String)>>>,
+    pub interactive: RefCell<Vec<InteractiveCall>>,
+    pub interactive_status: RefCell<i32>,
 }
 impl MockProc {
     pub fn respond(&self, matcher: &str, status: i32, stdout: &[u8], stderr: &[u8]) {
@@ -238,6 +247,17 @@ impl MockProc {
             .collect()
     }
 }
+pub struct InteractiveCall {
+    pub rendered: String,
+    pub envs: Vec<(String, String)>,
+}
+
+impl MockProc {
+    pub fn interactive_calls(&self) -> std::cell::Ref<'_, Vec<InteractiveCall>> {
+        self.interactive.borrow()
+    }
+}
+
 impl Proc for MockProc {
     fn run(
         &self,
@@ -267,5 +287,21 @@ impl Proc for MockProc {
             stdout: Vec::new(),
             stderr: Vec::new(),
         })
+    }
+
+    fn exec_interactive(
+        &self,
+        program: &str,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Result<i32, LatchError> {
+        self.interactive.borrow_mut().push(InteractiveCall {
+            rendered: format!("{} {}", program, args.join(" ")),
+            envs: envs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        });
+        Ok(*self.interactive_status.borrow())
     }
 }

@@ -103,6 +103,17 @@ impl Files for RealFiles {
         Ok(Self::walk_impl(root))
     }
 
+    fn remove_tree(&self, path: &str) -> Result<(), LatchError> {
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(LatchError::other(
+                format!("remove {}: {}", path, e),
+                "check permissions",
+            )),
+        }
+    }
+
     fn mtime_unix(&self, path: &str) -> Result<Option<u64>, LatchError> {
         match std::fs::metadata(path) {
             Ok(m) => Ok(m
@@ -300,6 +311,27 @@ impl super::Proc for RealProc {
             stdout: out.stdout,
             stderr: out.stderr,
         })
+    }
+
+    fn exec_interactive(
+        &self,
+        program: &str,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Result<i32, LatchError> {
+        use std::process::Command;
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+        let status = cmd.status().map_err(|e| {
+            LatchError::other(
+                format!("spawn {}: {}", program, e),
+                format!("is '{}' installed and on PATH?", program),
+            )
+        })?;
+        Ok(status.code().unwrap_or(-1))
     }
 }
 

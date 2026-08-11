@@ -223,6 +223,40 @@ impl<'a> Repo<'a> {
             .write_atomic(&format!("{}/{}", self.dir(), rel), content)
     }
 
+    /// S3 history: log for a path, `ref|unix|message` per line.
+    pub fn git_log(&self, path: &str) -> Result<String, LatchError> {
+        let out = self.git_in(&["log", "--pretty=format:%h|%ct|%s", "--", path])?;
+        let out = self.ok(
+            out,
+            "read history",
+            "is the clone initialized? (latch status)",
+        )?;
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    }
+
+    /// S3 rollback: restore `path` to its content at `reference` in the
+    /// working tree (validated first so a typo'd ref is a clean error).
+    pub fn checkout_path(&self, reference: &str, path: &str) -> Result<(), LatchError> {
+        let check = self.git_in(&[
+            "rev-parse",
+            "--verify",
+            &format!("{}^{{commit}}", reference),
+        ])?;
+        if check.status != 0 {
+            return Err(LatchError::other(
+                format!("'{}' is not a known version", reference),
+                "pick a ref from 'latch history'",
+            ));
+        }
+        let out = self.git_in(&["checkout", reference, "--", path])?;
+        self.ok(
+            out,
+            "restore old version",
+            "check the ref and path (latch history)",
+        )?;
+        Ok(())
+    }
+
     /// Remove a file from the clone working tree.
     pub fn remove(&self, rel: &str) -> Result<(), LatchError> {
         self.p.files.remove(&format!("{}/{}", self.dir(), rel))

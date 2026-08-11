@@ -28,6 +28,8 @@ pub trait Files {
     /// Recursively list files under `root` (relative paths, sorted),
     /// honouring .gitignore rules (D1). Missing root = empty list.
     fn walk(&self, root: &str) -> Result<Vec<String>, LatchError>;
+    /// Remove a directory tree (W9 reset). Missing tree is fine.
+    fn remove_tree(&self, path: &str) -> Result<(), LatchError>;
 }
 
 /// OS keyring (K4 primary layer on desktops). `available` is a cheap
@@ -71,6 +73,15 @@ pub trait Proc {
         envs: &[(&str, &str)],
         stdin: Option<&[u8]>,
     ) -> Result<ProcOutput, LatchError>;
+    /// Run a child with INHERITED stdio (W6 latch run): the child owns the
+    /// terminal; we only add env vars and report its exit code. Secrets go
+    /// through `envs` — process memory, never disk.
+    fn exec_interactive(
+        &self,
+        program: &str,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Result<i32, LatchError>;
 }
 
 /// Everything the core needs, in one bundle.

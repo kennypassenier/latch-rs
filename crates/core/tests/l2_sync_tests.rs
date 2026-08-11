@@ -209,3 +209,149 @@ fn wrong_key_on_pull_reports_what_is_needed() {
         other => panic!("expected key error, got {other}"),
     }
 }
+
+// ── L3: consumption & diagnosis on the same real-git world ─────────────
+
+#[test]
+fn l3_run_history_rollback_verify_state_reset() {
+    use latch_core::ops::consume;
+
+    let (tmp, origin) = scratch();
+    let proj = tmp.path().join("work/app9");
+    write(&proj.join(".env"), "TOKEN=first\nDEBUG=1\n");
+    let m = Machine::new(tmp.path(), "home", &origin);
+    let p = m.platform();
+    init::run(&p, &proj.display().to_string(), None).unwrap();
+    sync::commit(&p, &proj.display().to_string(), "dev").unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+
+    // W6 run: secrets land in the child env, never on disk — proven with a
+    // real child that checks the variable.
+    let out = consume::run(
+        &p,
+        &proj.display().to_string(),
+        "dev",
+        "sh",
+        &["-c", "test \"$TOKEN\" = first"],
+    )
+    .unwrap();
+    assert_eq!(out.exit_code, 0, "child saw the injected TOKEN");
+    assert_eq!(out.injected, 2);
+    // And exit codes propagate.
+    let out = consume::run(
+        &p,
+        &proj.display().to_string(),
+        "dev",
+        "sh",
+        &["-c", "exit 7"],
+    )
+    .unwrap();
+    assert_eq!(out.exit_code, 7);
+
+    // Change + push a second version, then S3 history shows both.
+    write(&proj.join(".env"), "TOKEN=second\nDEBUG=1\n");
+    sync::commit(&p, &proj.display().to_string(), "dev").unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    let hist = consume::history(&p, &proj.display().to_string()).unwrap();
+    assert!(hist.len() >= 2, "two pushes = two versions");
+
+    // S3 rollback to the first version → push → pull → file restored.
+    let first_ref = &hist.last().unwrap().reference;
+    consume::rollback(&p, &proj.display().to_string(), "dev", first_ref).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    sync::pull(&p, &proj.display().to_string(), "dev", false, true).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(proj.join(".env")).unwrap(),
+        "TOKEN=first\nDEBUG=1\n"
+    );
+    // Unknown ref is a clean error.
+    let err = consume::rollback(&p, &proj.display().to_string(), "dev", "deadbeef").unwrap_err();
+    assert!(format!("{err}").contains("latch history"), "{err}");
+
+    // S6 verify: everything Ok. Then corrupt the file AT THE ORIGIN (via a
+    // raw git clone — an attacker/bitrot scenario); verify refreshes and
+    // must catch it.
+    let ver = consume::verify(&p, None).unwrap();
+    assert!(ver
+        .entries
+        .iter()
+        .all(|(_, s)| *s == consume::VerifyState::Ok));
+    let attacker = tmp.path().join("attacker");
+    std::process::Command::new("git")
+        .args(["clone", "-q", &origin])
+        .arg(&attacker)
+        .status()
+        .unwrap();
+    let enc_path = attacker.join("app9/dev/.env.enc");
+    let mut bytes = std::fs::read(&enc_path).unwrap();
+    let last = bytes.len() - 1;
+    bytes[last] ^= 1;
+    std::fs::write(&enc_path, &bytes).unwrap();
+    for args in [
+        vec!["add", "-A"],
+        vec![
+            "-c",
+            "user.email=a@b",
+            "-c",
+            "user.name=a",
+            "commit",
+            "-q",
+            "-m",
+            "tamper",
+        ],
+        vec!["push", "-q"],
+    ] {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&attacker)
+            .args(&args)
+            .status()
+            .unwrap();
+    }
+    let ver = consume::verify(&p, Some("app9")).unwrap();
+    assert!(ver
+        .entries
+        .iter()
+        .any(|(rel, s)| rel.contains(".env.enc") && *s == consume::VerifyState::Corrupt));
+
+    // W8 state: the doctor sees the world.
+    let st = consume::state(&p).unwrap();
+    assert!(st.clone_exists);
+    assert!(!st.keyring_available, "headless machine");
+    assert!(st.cred_file, "file backend in use");
+    assert_eq!(st.projects.len(), 1);
+    assert!(st.projects[0].key.is_some());
+
+    // W9 reset: clone gone, credentials stay; the re-clone still sees the
+    // tampered origin (verify keeps reporting it — no false healing).
+    consume::reset(&p, true).unwrap();
+    let st = consume::state(&p).unwrap();
+    assert!(!st.clone_exists);
+    assert!(st.cred_file, "credentials survive reset");
+    let ver = consume::verify(&p, Some("app9")).unwrap();
+    assert!(
+        ver.entries
+            .iter()
+            .any(|(_, s)| *s == consume::VerifyState::Corrupt),
+        "tamper persists at origin"
+    );
+
+    // And the recovery story: S3 rollback to a good version fixes what S6
+    // found — rollback, push, verify all-Ok.
+    let hist = consume::history(&p, &proj.display().to_string()).unwrap();
+    let good_ref = hist
+        .iter()
+        .find(|h| !h.message.contains("tamper"))
+        .unwrap()
+        .reference
+        .clone();
+    consume::rollback(&p, &proj.display().to_string(), "dev", &good_ref).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    let ver = consume::verify(&p, Some("app9")).unwrap();
+    assert!(
+        ver.entries
+            .iter()
+            .all(|(_, s)| *s == consume::VerifyState::Ok),
+        "rollback healed the corruption"
+    );
+}
