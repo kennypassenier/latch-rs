@@ -1,0 +1,108 @@
+# Architecture decisions — latch v2
+
+Decided with Kenny in interactive rounds, 2026-08-11/12. Permanent IDs;
+referenced in commits. The *why* is recorded per decision.
+
+## AR1 · Workspace: core + cli + ui
+`latch-core` holds ALL logic behind backend traits with zero ambient I/O —
+every test runs against mocks that record calls. `latch` (CLI) and the TUI
+are thin shells over the same core; the UI can never grow a second
+implementation of anything. *(Why: the blob-corruption bug survived months
+because the GitHub path wasn't mockable; homelab proved the pattern.)*
+
+## AR2 · Storage backend: local git clone via the git binary
+Latch maintains a hidden clone in `~/.latch/repo` and drives real git.
+Push = encrypt into clone + `git add/commit/push`; history = `git log`;
+rollback = `git checkout <ref>`; overwrite protection = git's own
+non-fast-forward refusal; offline cache = the clone itself. *(Why: the
+entire "API returns something slightly different" bug class — June's
+binary-blob corruption — becomes impossible; S3/S4/S5 come nearly free.)*
+
+## AR3 · Credential file: one passphrase, own XChaCha format
+`~/.latch/credentials.enc`: all credentials in one file, XChaCha20-Poly1305
+with an Argon2-derived key from a single passphrase. Same format serves K6
+key backups. *(Why: one code path, no extra dependencies, consistent with
+the secrets crypto.)*
+
+## AR4 · v1 migration: clean break
+The secrets repo is refilled fresh from working machines; v2 never parses
+v1 formats. Old history remains in git as an archive. *(Kenny's call:
+simplest; the old repo stays readable with v1 if ever needed.)*
+
+## AR5 · Machine clone: `latch clone --to <ssh>` wrapper + subcommands
+One command runs the whole offer/payload/apply dance over ssh, with scope
+flags `--project` / `--env` (whole setup by default). The manual
+offer/create/apply subcommands remain for air-gapped/bootstrap cases.
+
+## AR6 · Failure model: homelab style
+Every error carries a remedy line; all writes are atomic (temp + rename);
+pull is all-or-nothing (one corrupt file → nothing written); without a TTY
+any would-be prompt is a hard error (M7); `RUST_LOG` reveals underlying
+operations; `latch state` is the doctor.
+
+## AR7 · Test & release standard: homelab grade
+Mock-backend tests on every destructive path; pinned regression vectors for
+the crypto format; CLI-surface and TUI snapshots; CI gates (fmt, clippy -D
+warnings, tests) where red blocks merge; tagged releases with sha256
+checksums feeding M5 self-update; every live bug becomes a test first.
+
+## AR8 · Client technology: terminal TUI (ratatui)
+The homelab recipe: Elm-style model, mockable backend, snapshot tests,
+AZERTY-aware keys, effect levels. A GUI can come later on the same core.
+
+## AR9 · Repo layout: pure path convention, self-describing
+`<project>/<env>/<flattened-name>.enc`; the git tree is the index. No
+manifest file. Group members are stored as tiny encrypted files containing
+only their pragma line; group content lives once in
+`_groups/<env>/<name>.enc`. Nothing exists that can drift out of sync with
+the tree. *(Why: v1's manifest-vs-reality drift was one of the reliability
+bugs that got groups disabled.)*
+
+## AR10 · Ciphertext envelope: full header
+`LATCH2` magic + format version + key-id (which key, which rotation
+generation) + nonce, then ciphertext. *(Why: precise errors — "encrypted
+with prod key gen 3, you have gen 2" instead of "decryption failed" — plus
+a forever migration path; S6 verify can report per-file key needs.)*
+
+## AR11 · Passphrase sessions: tmpfs cache with TTL
+First unlock caches the opened credentials in `/run/user/…` (RAM, gone at
+reboot) with a configurable TTL (default 15 min; 0 = always prompt).
+Scripts use env injection and never touch the cache. *(sudo-like balance
+of safety and sanity.)*
+
+## AR12 · Concurrency: file lock around mutations
+Mutating operations take `~/.latch/lock`; a second process waits with a
+message and times out with a clear error. Reads stay lock-free. *(TUI +
+cron will coexist; a half-committed repo is not an acceptable failure.)*
+
+## AR13 · Templates: expand at use
+The repo stores raw `${VAR}` references; expansion happens at pull/run
+output. Unresolved reference or cycle = hard error naming the variable.
+
+## AR14 · Rebuild approach: alongside the old code
+New workspace grows next to `src/`; old code stays as reference until the
+new one proves parity, then is archived in one closing pass (homelab
+legacy pattern).
+
+## AR15 · Config: one `~/.latch` dir + overrides
+TOML config in `~/.latch/` together with credentials, repo clone and cache
+— one dir that K6 backup and M2 clone can reason about. `LATCH_HOME` and
+an XDG-layout flag override for those who want it.
+
+## W12 · File groups design (approved in full)
+- **Cycle (W12a)**: membership via first-line pragma
+  `# latch:group=<name>`. Latch keeps a local baseline fingerprint per
+  group. At commit: empty members (pragma only) never count as changes;
+  exactly one changed member becomes the new group content and ALL other
+  members are updated locally in that same commit; all-empty with no
+  content = error.
+- **Divergence (W12b)**: two or more changed members = hard error naming
+  files and differing keys; the only choosing path is explicit:
+  `latch group resolve <name> --source <file>`. Never interactive.
+- **Joining (W12c)**: three valid routes — empty+pragma subscribes;
+  pragma+identical content joins silently; pragma+different content on a
+  new member errors with both intents in the remedy (`empty the file to
+  subscribe, or latch group adopt <name> --from <file>`).
+- **Scope (W12d)**: global per environment (cross-project), each group
+  encrypted with its own auto-created group key, included in K6 backups
+  and M2 clones.
