@@ -995,6 +995,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "latch-cli"
+version = "2.0.0-dev"
+dependencies = [
+ "clap",
+ "latch-core",
+]
+
+[[package]]
+name = "latch-core"
+version = "2.0.0-dev"
+dependencies = [
+ "argon2",
+ "chacha20poly1305",
+ "hex",
+ "rand",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "latch-rs"
 version = "1.0.0"
 dependencies = [
@@ -1024,6 +1044,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "x25519-dalek",
+]
+
+[[package]]
+name = "latch-ui"
+version = "2.0.0-dev"
+dependencies = [
+ "latch-core",
 ]
 
 [[package]]

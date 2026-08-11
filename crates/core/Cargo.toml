@@ -1,0 +1,17 @@
+[package]
+name = "latch-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "latch v2 core: all domain logic, zero ambient I/O (AR1)"
+
+[dependencies]
+chacha20poly1305.workspace = true
+argon2.workspace = true
+rand.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hex.workspace = true

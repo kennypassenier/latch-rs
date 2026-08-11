@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 fn run_latch(args: &[&str]) -> (bool, String, String) {
     let home = TempDir::new().expect("temp home");
-    let output = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let output = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args(args)
         .env("HOME", home.path())
         .env("XDG_CONFIG_HOME", home.path().join(".config"))
@@ -120,7 +120,7 @@ fn subcommand_help_pages_are_accessible() {
 #[test]
 fn clone_offer_emits_json_and_persists_offer_file() {
     let home = TempDir::new().expect("temp home");
-    let output = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let output = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args(["clone", "offer", "--ttl-minutes", "1"])
         .env("HOME", home.path())
         .env("XDG_CONFIG_HOME", home.path().join(".config"))
@@ -193,7 +193,7 @@ default_env = "dev"
     .expect("write source global config");
 
     // 1) Offer on target.
-    let offer_out = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let offer_out = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args(["clone", "offer", "--ttl-minutes", "10"])
         .env("HOME", target_home.path())
         .env("XDG_CONFIG_HOME", target_home.path().join(".config"))
@@ -210,7 +210,7 @@ default_env = "dev"
 
     // 2) Create payload on source.
     let payload_file = source_home.path().join("payload.json");
-    let create_out = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let create_out = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args([
             "clone",
             "create",
@@ -233,7 +233,7 @@ default_env = "dev"
     assert!(payload_file.exists(), "payload file should be created");
 
     // 3) Apply payload on target.
-    let apply_out = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let apply_out = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args([
             "clone",
             "apply",
@@ -277,7 +277,7 @@ default_env = "dev"
     )
     .expect("write source global config");
 
-    let offer_out = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let offer_out = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args(["clone", "offer", "--ttl-minutes", "10"])
         .env("HOME", target_home.path())
         .env("XDG_CONFIG_HOME", target_home.path().join(".config"))
@@ -289,7 +289,7 @@ default_env = "dev"
     fs::write(&offer_file, &offer_out.stdout).expect("write offer file");
 
     let payload_file = source_home.path().join("payload.json");
-    let create_out = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let create_out = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args([
             "clone",
             "create",
@@ -306,7 +306,7 @@ default_env = "dev"
         .expect("run clone create");
     assert!(create_out.status.success());
 
-    let apply_out = Command::new(env!("CARGO_BIN_EXE_latch"))
+    let apply_out = Command::new(env!("CARGO_BIN_EXE_latch-legacy"))
         .args([
             "clone",
             "apply",
