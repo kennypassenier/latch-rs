@@ -172,10 +172,11 @@ offer/payload machinery stays under the hood, pipeable over ssh).
   more (assert absent keys on target); expired offer → clean retry path;
   wrong verify-code → refusal.
 
-### M3 · Clone groups — **Could**
-Saved named bundles for M2. Currently disabled for reliability; rebuild
-only after the redesigned M2 is proven. Scope filters cover the need
-meanwhile.
+### M3 · ~~Clone groups~~ — withdrawn (mischaracterized)
+Originally rated Could based on a WRONG description (machine-clone
+bundles). The real v1 feature is the pragma-based file-group mechanism —
+re-rated properly as **W12**. Machine-clone bundling as such is covered by
+M2's scope flags.
 
 ### M4 · `latch path` — **Should**
 Managed install path + PATH guidance for M5.
@@ -228,6 +229,23 @@ state from N days ago". First pull still needs network.
 Masked-by-default diff (key names + changed/added/removed) between local,
 committed, and remote; `--reveal` for values.
 - **Auto**: golden diff output; values provably absent without --reveal.
+
+### W12 · Linked file groups (pragma pattern) — **Should** *(design approved in full — see ARCHITECTURE_DECISIONS.md W12a-d)*
+Multiple .env files (cross-project) share one encrypted content blob via a
+first-line pragma `# latch:group=<name>`. Edit ONE member → commit updates
+all members locally in the same commit. Empty members (pragma only) are
+subscribers, never a valid change source. Two changed members = hard error
+with explicit `latch group resolve --source` as the only choosing path.
+Joining with differing content errors (empty-to-subscribe or
+`group adopt`). Global per environment with per-group keys.
+- **Auto**: one-changed-member commit fans out to all members incl. filling
+  empty subscribers; baseline updated.
+- **Auto**: two changed members → error naming files and keys; resolve
+  --source wins; non-interactive mode never prompts.
+- **Auto**: new member with differing content → error offering both
+  remedies; adopt makes its content the group's.
+- **Auto**: all-empty group with no prior content → "no content yet" error.
+- **Auto**: group keys appear in K6 backups and M2 clone payloads.
 
 ### W11 · `latch edit` — **Should**
 Decrypt → $EDITOR via tmpfs → auto-commit on close → optional push. Zero
@@ -287,6 +305,6 @@ Guided login (M1, live validation), project linking (W1), rotation with
 consequences explained (K3), key backup/restore (K6).
 
 ---
-Final tally: 29 Must · 12 Should · 1 Could · 2 Won't (44 features).
+Final tally: 29 Must · 13 Should · 0 Could · 2 Won't + 1 withdrawn (45 entries).
 Next: architecture decisions (phase 3), then testing & documentation
 (phase 4).
