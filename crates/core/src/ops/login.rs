@@ -98,8 +98,8 @@ fn validate(p: &Platform, pat: &str, repo: &str) -> Result<(), LatchError> {
 }
 
 /// Minimal base64 for the Basic auth header — no new dependency for 20
-/// lines.
-fn base64_basic(user: &str, pass: &str) -> String {
+/// lines. Shared with the repo backend (AR2).
+pub(crate) fn base64_basic(user: &str, pass: &str) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let raw = format!("{}:{}", user, pass);
     let bytes = raw.as_bytes();

@@ -17,7 +17,9 @@ thiserror.workspace = true
 keyring = { version = "3", features = ["linux-native"] }
 rpassword = "7"
 dirs = "5"
+ignore = "0.4"
 hex.workspace = true
 
 [dev-dependencies]
+tempdir = "0.3"
 hex.workspace = true

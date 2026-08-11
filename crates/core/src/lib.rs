@@ -5,9 +5,12 @@
 
 pub mod config;
 pub mod credentials;
+pub mod discovery;
 pub mod envelope;
 pub mod error;
 pub mod kdf;
+pub mod keys;
 pub mod lock;
 pub mod ops;
 pub mod platform;
+pub mod repo;

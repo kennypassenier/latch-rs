@@ -67,6 +67,17 @@ impl Files for MockFiles {
         }
         Ok(Some(*self.mtimes.borrow().get(path).unwrap_or(&0)))
     }
+    fn walk(&self, root: &str) -> Result<Vec<String>, LatchError> {
+        let prefix = format!("{}/", root.trim_end_matches('/'));
+        let mut out: Vec<String> = self
+            .files
+            .borrow()
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix).map(String::from))
+            .collect();
+        out.sort();
+        Ok(out)
+    }
 }
 
 pub struct MockKeyring {

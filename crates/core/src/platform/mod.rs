@@ -25,6 +25,9 @@ pub trait Files {
     fn try_create_exclusive(&self, path: &str, content: &[u8]) -> Result<bool, LatchError>;
     /// Modification time as unix seconds, None if absent (AR11 TTL).
     fn mtime_unix(&self, path: &str) -> Result<Option<u64>, LatchError>;
+    /// Recursively list files under `root` (relative paths, sorted),
+    /// honouring .gitignore rules (D1). Missing root = empty list.
+    fn walk(&self, root: &str) -> Result<Vec<String>, LatchError>;
 }
 
 /// OS keyring (K4 primary layer on desktops). `available` is a cheap

@@ -96,6 +96,13 @@ impl Files for RealFiles {
         }
     }
 
+    fn walk(&self, root: &str) -> Result<Vec<String>, LatchError> {
+        if !std::path::Path::new(root).is_dir() {
+            return Ok(Vec::new());
+        }
+        Ok(Self::walk_impl(root))
+    }
+
     fn mtime_unix(&self, path: &str) -> Result<Option<u64>, LatchError> {
         match std::fs::metadata(path) {
             Ok(m) => Ok(m
@@ -109,6 +116,27 @@ impl Files for RealFiles {
                 "check permissions",
             )),
         }
+    }
+}
+
+impl RealFiles {
+    fn walk_impl(root: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for entry in ignore::WalkBuilder::new(root)
+            .hidden(false)
+            .git_ignore(true)
+            .git_global(false)
+            .build()
+            .flatten()
+        {
+            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                if let Ok(rel) = entry.path().strip_prefix(root) {
+                    out.push(rel.display().to_string());
+                }
+            }
+        }
+        out.sort();
+        out
     }
 }
 

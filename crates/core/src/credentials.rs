@@ -112,10 +112,22 @@ impl<'a> CredStore<'a> {
     }
 
     /// Resolve a slot (K4): env → file → keyring. Returns the value and
-    /// where it came from.
+    /// where it came from. Binary slots (`key:` / `group:`) are carried as
+    /// hex in environment variables — env vars are text; the file and
+    /// keyring layers store raw bytes.
     pub fn get(&self, slot: &str) -> Result<Option<(Vec<u8>, Source)>, LatchError> {
         if let Some(v) = self.p.env.var(&env_var_for_slot(slot)) {
-            return Ok(Some((v.into_bytes(), Source::EnvVar)));
+            let value = if slot.starts_with("key:") || slot.starts_with("group:") {
+                hex::decode(v.trim()).map_err(|_| {
+                    LatchError::other(
+                        format!("{} is not valid hex", env_var_for_slot(slot)),
+                        "binary key slots are injected as hex (latch key show prints the right form)",
+                    )
+                })?
+            } else {
+                v.into_bytes()
+            };
+            return Ok(Some((value, Source::EnvVar)));
         }
         if let Some(map) = self.read_file_map()? {
             if let Some(hexed) = map.slots.get(slot) {
