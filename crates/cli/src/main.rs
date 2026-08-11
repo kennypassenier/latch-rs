@@ -124,6 +124,75 @@ enum Command {
         #[command(subcommand)]
         action: GroupAction,
     },
+    /// Key management: show, rotate, backup, restore (K2/K3/K5/K6).
+    Key {
+        #[command(subcommand)]
+        action: KeyAction,
+    },
+    /// M2 machine clone: move credentials to another machine, E2E-encrypted.
+    Clone {
+        /// ssh target (user@host) — runs the whole dance in one command.
+        #[arg(long)]
+        to: Option<String>,
+        /// Limit to one project.
+        #[arg(long)]
+        project: Option<String>,
+        /// Limit to one environment of that project.
+        #[arg(long)]
+        env: Option<String>,
+        #[command(subcommand)]
+        action: Option<CloneAction>,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum KeyAction {
+    /// Show the key's identity; --reveal prints the hex value (K5).
+    Show {
+        #[arg(long)]
+        env: Option<String>,
+        /// Print the key material itself (never shown without this).
+        #[arg(long)]
+        reveal: bool,
+    },
+    /// Mint the next key generation and re-encrypt (K3); --env creates or
+    /// rotates a per-environment key (K2).
+    Rotate {
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// Export ALL credentials as one passphrase-encrypted file (K6).
+    Backup { file: String },
+    /// Restore a backup file into this machine's credential store (K6).
+    Restore { file: String },
+}
+
+#[derive(clap::Subcommand)]
+enum CloneAction {
+    /// (target) Generate an offer for this machine to receive credentials.
+    Offer {
+        /// Print machine-readable OFFER= output (for the --to wrapper).
+        #[arg(long)]
+        machine: bool,
+    },
+    /// (source) Create a sealed payload for an offer.
+    Create {
+        offer: String,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// (target) Apply a payload against this machine's pending offer.
+    Apply {
+        payload: String,
+        /// The 6-digit verify code shown by the machine that created the
+        /// payload. Required without a TTY (M7).
+        #[arg(long)]
+        code: Option<String>,
+        #[arg(long)]
+        machine: bool,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -386,6 +455,101 @@ fn main() {
                     );
                 })
             }
+        },
+        Command::Key { action } => match action {
+            KeyAction::Show { env, reveal } => {
+                latch_core::ops::keyops::show(&platform, &cwd, env.as_deref(), reveal).map(|k| {
+                    println!("key       {} (generation {})", k.label, k.generation);
+                    println!("source    {:?}", k.source);
+                    println!("env var   {}", k.env_var);
+                    match k.hex {
+                        Some(h) => println!("value     {}", h),
+                        None => println!("value     hidden :: --reveal prints it"),
+                    }
+                })
+            }
+            KeyAction::Rotate { env } => {
+                latch_core::ops::keyops::rotate(&platform, &cwd, env.as_deref()).map(|r| {
+                    match r.old_generation {
+                        Some(old) => println!(
+                            "✓ {} rotated: generation {} -> {}",
+                            r.label, old, r.new_generation
+                        ),
+                        None => println!(
+                            "✓ {} created (generation {})",
+                            r.label, r.new_generation
+                        ),
+                    }
+                    println!("  {} file(s) re-encrypted — 'latch push' publishes them", r.reencrypted.len());
+                    println!("  ⚠ {}", r.caveat);
+                })
+            }
+            KeyAction::Backup { file } => {
+                latch_core::ops::keyops::backup(&platform, &file).map(|b| {
+                    println!("✓ {} credential(s) backed up to {}", b.slots.len(), b.path);
+                    for s in &b.slots {
+                        println!("    {}", s);
+                    }
+                })
+            }
+            KeyAction::Restore { file } => {
+                latch_core::ops::keyops::restore(&platform, &file).map(|r| {
+                    println!("✓ {} credential(s) restored", r.restored.len());
+                    if r.repo_configured {
+                        println!("  repo configured from the backup");
+                    }
+                })
+            }
+        },
+        Command::Clone { to, project, env, action } => match (to, action) {
+            (Some(target), None) => {
+                latch_core::ops::clone::clone_to(&platform, &target, project.as_deref(), env.as_deref())
+                    .map(|r| {
+                        println!(
+                            "✓ {} credential(s) cloned to {} (verify code was {})",
+                            r.applied, target, r.code
+                        );
+                    })
+            }
+            (None, Some(CloneAction::Offer { machine })) => {
+                latch_core::ops::clone::offer(&platform).map(|o| {
+                    if machine {
+                        println!("OFFER={}", o.offer);
+                    } else {
+                        println!("offer (valid 15 min, single use):");
+                        println!("  {}", o.offer);
+                        println!("on the SOURCE machine: latch clone create '{}'", o.offer);
+                    }
+                })
+            }
+            (None, Some(CloneAction::Create { offer, project, env })) => {
+                latch_core::ops::clone::create(&platform, &offer, project.as_deref(), env.as_deref())
+                    .map(|c| {
+                        println!("payload ({} credential(s)):", c.slots.len());
+                        println!("  {}", c.payload);
+                        println!("verify code: {} — the target must confirm THIS code", c.code);
+                    })
+            }
+            (None, Some(CloneAction::Apply { payload, code, machine })) => {
+                latch_core::ops::clone::apply(&platform, &payload, code.as_deref()).map(|a| {
+                    if machine {
+                        println!("APPLIED={}", a.applied.len());
+                    } else {
+                        println!("✓ {} credential(s) applied", a.applied.len());
+                        if a.repo_configured {
+                            println!("  repo configured from the payload");
+                        }
+                    }
+                })
+            }
+            (Some(_), Some(_)) => Err(latch_core::error::LatchError::other(
+                "--to and a subcommand are mutually exclusive",
+                "use 'latch clone --to <ssh>' OR the manual offer/create/apply verbs",
+            )),
+            (None, None) => Err(latch_core::error::LatchError::other(
+                "clone needs --to <ssh> or a subcommand",
+                "one-shot: latch clone --to user@host; manual: offer (there), create (here), apply (there)",
+            )),
         },
         Command::Status { env } => {
             latch_core::ops::sync::status(&platform, &cwd, &env).map(|out| {

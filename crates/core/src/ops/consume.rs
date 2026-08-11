@@ -53,9 +53,12 @@ pub fn run(
     let fresh = repo.refresh(false)?;
 
     let store = CredStore::new(p);
-    let key = keys::get(&store, &proj.name)?.ok_or_else(|| {
+    let key = keys::for_env(&store, &proj.name, env_name)?.ok_or_else(|| {
         LatchError::other(
-            format!("no key for project '{}' on this machine", proj.name),
+            format!(
+                "no key for project '{}' ({}) on this machine",
+                proj.name, env_name
+            ),
             "clone your credentials here (latch clone) or restore a backup (latch key restore)",
         )
     })?;

@@ -55,7 +55,7 @@ pub fn diff(p: &Platform, cwd: &str, env: &str, reveal: bool) -> Result<Vec<File
     let repo = repo_handle(p)?;
     repo.ensure()?;
     let store = CredStore::new(p);
-    let key = keys::get(&store, &proj.name)?;
+    let key = keys::for_env(&store, &proj.name, env)?;
     let prefix = format!("{}/{}", proj.name, env);
 
     let mut out = Vec::new();
@@ -130,7 +130,7 @@ pub fn edit(
     let repo = repo_handle(p)?;
     repo.ensure()?;
     let store = CredStore::new(p);
-    let key = keys::get_or_create(&store, &proj.name)?;
+    let key = keys::for_env_or_create(&store, &proj.name, env)?;
 
     let rel = file.unwrap_or(".env").to_string();
     let flat = discovery::flatten(&rel)?;

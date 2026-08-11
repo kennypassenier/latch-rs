@@ -168,6 +168,16 @@ impl<'a> CredStore<'a> {
         Ok(())
     }
 
+    /// Slot names stored in the FILE backend (K6 backup enumeration).
+    /// Keyring backends cannot enumerate; callers union this with the
+    /// deterministic candidates derived from config + repo layout.
+    pub fn file_slots(&self) -> Result<Vec<String>, LatchError> {
+        Ok(self
+            .read_file_map()?
+            .map(|m| m.slots.keys().cloned().collect())
+            .unwrap_or_default())
+    }
+
     /// Sources report for W8/G3: does the file exist, is the keyring up,
     /// is a session active.
     pub fn file_exists(&self) -> Result<bool, LatchError> {

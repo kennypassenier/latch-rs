@@ -71,7 +71,7 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
     repo.ensure()?;
 
     let store = CredStore::new(p);
-    let key = keys::get_or_create(&store, &proj.name)?;
+    let key = keys::for_env_or_create(&store, &proj.name, env)?;
 
     let local = discovery::discover(p.files, &proj.dir)?;
     let prefix = format!("{}/{}", proj.name, env);
@@ -165,12 +165,13 @@ pub fn pull(
     let fresh = if offline { false } else { repo.refresh(true)? };
 
     let store = CredStore::new(p);
-    let key = keys::get(&store, &proj.name)?.ok_or_else(|| {
-        LatchError::other(
-            format!("no key for project '{}' on this machine", proj.name),
+    let key =
+        keys::for_env(&store, &proj.name, env)?.ok_or_else(|| {
+            LatchError::other(
+            format!("no key for project '{}' ({}) on this machine", proj.name, env),
             "clone your credentials here (latch clone) or restore a key backup (latch key restore)",
         )
-    })?;
+        })?;
 
     let prefix = format!("{}/{}", proj.name, env);
     // Phase 1: decrypt everything into memory.
@@ -257,7 +258,7 @@ pub fn status(p: &Platform, cwd: &str, env: &str) -> Result<StatusOutcome, Latch
     let repo = repo_handle(p)?;
     repo.ensure()?;
     let store = CredStore::new(p);
-    let key = keys::get(&store, &proj.name)?;
+    let key = keys::for_env(&store, &proj.name, env)?;
 
     let prefix = format!("{}/{}", proj.name, env);
     let local = discovery::discover(p.files, &proj.dir)?;

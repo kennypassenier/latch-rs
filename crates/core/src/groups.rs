@@ -366,7 +366,7 @@ fn sync_one_group(
             p.files.write_atomic(&m.local_path(), &full)?;
             fanned.push(m.id());
         }
-        let pkey = crate::keys::get_or_create(store, &m.project)?;
+        let pkey = crate::keys::for_env_or_create(store, &m.project, env)?;
         let flat = crate::discovery::flatten(&m.rel)?;
         let stub_rel = format!("{}/{}/{}.enc", m.project, env, flat);
         let stub_plain = member_file(name, b"");

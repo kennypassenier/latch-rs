@@ -1027,6 +1027,7 @@ dependencies = [
  "tempdir",
  "thiserror 2.0.18",
  "toml",
+ "x25519-dalek",
 ]
 
 [[package]]
