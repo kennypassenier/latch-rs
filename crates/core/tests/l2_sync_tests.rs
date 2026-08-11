@@ -355,3 +355,96 @@ fn l3_run_history_rollback_verify_state_reset() {
         "rollback healed the corruption"
     );
 }
+
+// ── L4a: diff, edit, examples, templates-in-run ────────────────────────
+
+#[test]
+fn l4a_diff_edit_examples() {
+    use latch_core::ops::edit_diff::{self, Change};
+
+    let (tmp, origin) = scratch();
+    let proj = tmp.path().join("work/app10");
+    write(&proj.join(".env"), "KEEP=1\nCHANGE=old\nGONE=x\n");
+    let m = Machine::new(tmp.path(), "home", &origin);
+    let p = m.platform();
+    init::run(&p, &proj.display().to_string(), None).unwrap();
+    sync::commit(&p, &proj.display().to_string(), "dev").unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+
+    // W10 diff, masked by default: names visible, values withheld.
+    write(&proj.join(".env"), "KEEP=1\nCHANGE=new\nADDED=y\n");
+    let d = edit_diff::diff(&p, &proj.display().to_string(), "dev", false).unwrap();
+    assert_eq!(d.len(), 1);
+    let entries = &d[0].entries;
+    let find = |k: &str| entries.iter().find(|(n, ..)| n == k).unwrap();
+    assert_eq!(find("CHANGE").1, Change::Changed);
+    assert_eq!(find("ADDED").1, Change::Added);
+    assert_eq!(find("GONE").1, Change::Removed);
+    assert!(
+        entries
+            .iter()
+            .all(|(_, _, old, new)| old.is_none() && new.is_none()),
+        "masked by default"
+    );
+    let d = edit_diff::diff(&p, &proj.display().to_string(), "dev", true).unwrap();
+    let ch = d[0].entries.iter().find(|(n, ..)| n == "CHANGE").unwrap();
+    assert_eq!(ch.3.as_deref(), Some("new"), "--reveal shows values");
+
+    // D3 examples: only via the explicit call; values provably absent.
+    let written = edit_diff::write_examples(&p, &proj.display().to_string()).unwrap();
+    assert_eq!(written, vec![".env.example".to_string()]);
+    let example = std::fs::read_to_string(proj.join(".env.example")).unwrap();
+    assert!(example.contains("ADDED=\n"));
+    assert!(!example.contains("new"), "no values in examples");
+
+    // W11 edit: "editor" is a script appending a var; tmp lives in the
+    // runtime dir and is gone afterwards.
+    let runtime = tmp.path().join("runtime");
+    std::fs::create_dir_all(&runtime).unwrap();
+    let m2 = Machine::new(tmp.path(), "home", &origin); // same home
+    let p2 = Platform {
+        runtime_dir: Some(runtime.display().to_string()),
+        ..m2.platform()
+    };
+    let editor = tmp.path().join("fake-editor.sh");
+    std::fs::write(&editor, "#!/bin/sh\necho 'EDITED=yes' >> \"$1\"\n").unwrap();
+    std::process::Command::new("chmod")
+        .arg("+x")
+        .arg(&editor)
+        .status()
+        .unwrap();
+    m2.env.set("EDITOR", &editor.display().to_string());
+    m2.env.set("LATCH_PASSPHRASE", "test-pp");
+    let out =
+        latch_core::ops::edit_diff::edit(&p2, &proj.display().to_string(), "dev", None).unwrap();
+    assert!(out.changed);
+    // Temp file cleaned up.
+    assert!(
+        std::fs::read_dir(&runtime).unwrap().next().is_none(),
+        "no residue"
+    );
+    // The edit landed in the clone AND locally.
+    assert!(std::fs::read_to_string(proj.join(".env"))
+        .unwrap()
+        .contains("EDITED=yes"));
+    let st = sync::status(&p2, &proj.display().to_string(), "dev").unwrap();
+    assert!(st.entries.iter().all(|(_, s)| *s == sync::FileState::Clean));
+
+    // W7 in run: reference expands; typo fails naming the variable.
+    write(&proj.join(".env"), "HOST=db1\nURL=pg://${HOST}/x\n");
+    sync::commit(&p2, &proj.display().to_string(), "dev").unwrap();
+    let out = latch_core::ops::consume::run(
+        &p2,
+        &proj.display().to_string(),
+        "dev",
+        "sh",
+        &["-c", "test \"$URL\" = pg://db1/x"],
+    )
+    .unwrap();
+    assert_eq!(out.exit_code, 0, "template expanded into the child env");
+    write(&proj.join(".env"), "URL=pg://${TYPO}/x\n");
+    sync::commit(&p2, &proj.display().to_string(), "dev").unwrap();
+    let err = latch_core::ops::consume::run(&p2, &proj.display().to_string(), "dev", "true", &[])
+        .unwrap_err();
+    assert!(format!("{err}").contains("TYPO"), "{err}");
+}

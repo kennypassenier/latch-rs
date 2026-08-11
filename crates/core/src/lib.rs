@@ -14,3 +14,4 @@ pub mod lock;
 pub mod ops;
 pub mod platform;
 pub mod repo;
+pub mod template;

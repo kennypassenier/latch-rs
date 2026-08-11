@@ -13,7 +13,7 @@ use crate::repo::Repo;
 
 use super::sync::project_for;
 
-fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
+pub(crate) fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
     let config = Config::load(p)?;
     let repo_name = config.repo.ok_or_else(|| {
         LatchError::other(
@@ -89,6 +89,11 @@ pub fn run(
             "commit+push env files first, or check --env",
         ));
     }
+
+    // W7/AR13: expand ${VAR} references at use time, strictly.
+    let map: std::collections::BTreeMap<String, String> = vars.iter().cloned().collect();
+    let expanded = crate::template::expand_all(&map)?;
+    let vars: Vec<(String, String)> = expanded.into_iter().collect();
 
     let env_refs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     let exit_code = p.proc.exec_interactive(program, args, &env_refs)?;

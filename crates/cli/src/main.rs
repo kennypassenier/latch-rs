@@ -103,6 +103,22 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
+    /// What would push change? Key names only; --reveal shows values (W10).
+    Diff {
+        #[arg(long, default_value = "dev")]
+        env: String,
+        #[arg(long)]
+        reveal: bool,
+    },
+    /// Edit a secret file in $EDITOR via tmpfs — zero plaintext on disk (W11).
+    Edit {
+        /// File to edit (default .env).
+        file: Option<String>,
+        #[arg(long, default_value = "dev")]
+        env: String,
+    },
+    /// Write keys-only .env.example files (D3 — explicit, never automatic).
+    Example,
 }
 
 fn main() {
@@ -274,6 +290,47 @@ fn main() {
         }),
         Command::Reset { yes } => latch_core::ops::consume::reset(&platform, yes)
             .map(|()| println!("✓ local clone wiped — the next command re-clones")),
+        Command::Diff { env, reveal } => {
+            latch_core::ops::edit_diff::diff(&platform, &cwd, &env, reveal).map(|diffs| {
+                use latch_core::ops::edit_diff::Change;
+                for d in &diffs {
+                    println!("{}:", d.file);
+                    for (k, change, old, new) in &d.entries {
+                        let sym = match change {
+                            Change::Added => "+",
+                            Change::Removed => "-",
+                            Change::Changed => "~",
+                        };
+                        match (old, new) {
+                            (Some(o), Some(n)) => println!("  {} {} {} -> {}", sym, k, o, n),
+                            (None, Some(n)) => println!("  {} {} = {}", sym, k, n),
+                            (Some(o), None) => println!("  {} {} (was {})", sym, k, o),
+                            (None, None) => println!("  {} {}", sym, k),
+                        }
+                    }
+                }
+                if diffs.is_empty() {
+                    println!("no differences with the committed state");
+                }
+            })
+        }
+        Command::Edit { file, env } => {
+            latch_core::ops::edit_diff::edit(&platform, &cwd, &env, file.as_deref()).map(|out| {
+                if out.changed {
+                    println!("✓ {} edited and committed :: 'latch push' publishes it", out.file);
+                } else {
+                    println!("no changes made to {}", out.file);
+                }
+            })
+        }
+        Command::Example => {
+            latch_core::ops::edit_diff::write_examples(&platform, &cwd).map(|written| {
+                for w in &written {
+                    println!("  ✚ {}", w);
+                }
+                println!("✓ {} example file(s) written (keys only)", written.len());
+            })
+        }
         Command::Status { env } => {
             latch_core::ops::sync::status(&platform, &cwd, &env).map(|out| {
                 use latch_core::ops::sync::FileState as S;

@@ -134,11 +134,16 @@ impl<'a> Repo<'a> {
             }
             return Ok(false);
         }
+        // NEVER reset over committed-but-unpushed work: a dirty tree means
+        // staged ciphertexts awaiting push — data preservation beats
+        // freshness (found by the L4 tests: refresh after an offline
+        // commit must not destroy it).
+        let dirty = !self.git_in(&["status", "--porcelain"])?.stdout.is_empty();
         let has_remote = self
             .git_in(&["rev-parse", "--verify", &format!("origin/{}", BRANCH)])?
             .status
             == 0;
-        if has_remote {
+        if has_remote && !dirty {
             let out =
                 self.git_in(&["reset", "--hard", &format!("origin/{}", BRANCH), "--quiet"])?;
             self.ok(
