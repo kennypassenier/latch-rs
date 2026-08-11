@@ -1023,6 +1023,7 @@ dependencies = [
  "rpassword",
  "serde",
  "serde_json",
+ "sha2",
  "tempdir",
  "thiserror 2.0.18",
  "toml",

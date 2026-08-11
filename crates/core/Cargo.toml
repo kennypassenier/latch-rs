@@ -19,6 +19,7 @@ rpassword = "7"
 dirs = "5"
 ignore = "0.4"
 hex.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 tempdir = "0.3"

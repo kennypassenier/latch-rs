@@ -68,6 +68,11 @@ pub fn run(
         };
         let sealed = repo.read(&format!("{}/{}", prefix, enc_name))?.unwrap();
         let plain = envelope::open(&key.key, &key.id, &sealed, &enc_name)?;
+        // W12: group members resolve to the group's stored content.
+        let plain = match crate::groups::parse_member(&plain) {
+            Some((gname, _)) => crate::groups::group_body(p, &repo, env_name, &gname)?,
+            None => plain,
+        };
         let text = String::from_utf8(plain).map_err(|_| LatchError::Format {
             context: enc_name.clone(),
             detail: "decrypted content is not utf-8".into(),

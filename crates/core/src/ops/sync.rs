@@ -7,6 +7,7 @@ use crate::credentials::CredStore;
 use crate::discovery;
 use crate::envelope;
 use crate::error::LatchError;
+use crate::groups;
 use crate::keys;
 use crate::lock;
 use crate::platform::Platform;
@@ -57,6 +58,8 @@ pub struct CommitOutcome {
     pub files: Vec<(String, bool)>,
     /// Files present in the clone but no longer locally — removed.
     pub removed: Vec<String>,
+    /// W12 group sync results (fan-out happens inside the same commit).
+    pub groups: Vec<groups::GroupReport>,
 }
 
 /// Encrypt the project's env files into the clone (no network). The file
@@ -83,6 +86,11 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
             .files
             .read(&format!("{}/{}", proj.dir, rel))?
             .ok_or_else(|| LatchError::other(format!("{} vanished mid-commit", rel), "retry"))?;
+        if groups::parse_member(&plain).is_some() {
+            // W12 member: the group engine below owns its stub + content;
+            // here it only claims its slot so removal detection keeps it.
+            continue;
+        }
         // Unchanged? Compare against the decrypted clone version to keep
         // the git history free of no-op re-encryptions.
         let changed = match repo.read(&enc_rel)? {
@@ -109,7 +117,15 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
         }
     }
 
-    Ok(CommitOutcome { files, removed })
+    // W12: groups sync at commit time — one changed member becomes the
+    // group content, everyone else is fanned out in this same commit.
+    let group_reports = groups::sync_groups(p, &repo, env)?;
+
+    Ok(CommitOutcome {
+        files,
+        removed,
+        groups: group_reports,
+    })
 }
 
 // ── W3 push ─────────────────────────────────────────────────────────────
@@ -168,6 +184,16 @@ pub fn pull(
             .read(&format!("{}/{}", prefix, enc_name))?
             .expect("listed file readable");
         let plain = envelope::open(&key.key, &key.id, &sealed, &rel)?;
+        // W12: a stub decrypts to its pragma line; the real content lives
+        // once in _groups/<env>/<name>.enc under the group key.
+        let plain = match groups::parse_member(&plain) {
+            Some((name, _)) => {
+                let body = groups::group_body(p, &repo, env, &name)?;
+                groups::note_baseline(p, env, &name, &body, &format!("{}/{}", proj.name, rel))?;
+                groups::member_file(&name, &body)
+            }
+            None => plain,
+        };
         incoming.push((rel, plain));
     }
 
@@ -242,10 +268,18 @@ pub fn status(p: &Platform, cwd: &str, env: &str) -> Result<StatusOutcome, Latch
         let flat = discovery::flatten(rel)?;
         let enc_rel = format!("{}/{}.enc", prefix, flat);
         seen.insert(format!("{}.enc", flat));
-        let state = match (&key, repo.read(&enc_rel)?) {
-            (Some(k), Some(sealed)) => {
+        let local_content = p.files.read(&format!("{}/{}", proj.dir, rel))?;
+        let member = local_content.as_deref().and_then(groups::parse_member);
+        let state = match (&key, repo.read(&enc_rel)?, member) {
+            // W12 member: clean when the local body matches the group
+            // content; an unreadable group (missing key) reads as Modified
+            // so it draws attention instead of lying "Clean".
+            (_, Some(_), Some((name, body))) => match groups::group_body(p, &repo, env, &name) {
+                Ok(gb) if gb == body => FileState::Clean,
+                _ => FileState::Modified,
+            },
+            (Some(k), Some(sealed), None) => {
                 let plain = envelope::open(&k.key, &k.id, &sealed, rel)?;
-                let local_content = p.files.read(&format!("{}/{}", proj.dir, rel))?;
                 if local_content.as_deref() == Some(plain.as_slice()) {
                     FileState::Clean
                 } else {

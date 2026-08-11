@@ -119,6 +119,37 @@ enum Command {
     },
     /// Write keys-only .env.example files (D3 — explicit, never automatic).
     Example,
+    /// W12 file groups: shared content across projects via a pragma line.
+    Group {
+        #[command(subcommand)]
+        action: GroupAction,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum GroupAction {
+    /// Show every group for the environment, with members and key status.
+    List {
+        #[arg(long, default_value = "dev")]
+        env: String,
+    },
+    /// Pick the winner after a divergence error (W12b): SOURCE's content
+    /// becomes the group content; all other members are overwritten.
+    Resolve {
+        name: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long, default_value = "dev")]
+        env: String,
+    },
+    /// Make a new member's differing content THE group content (W12c).
+    Adopt {
+        name: String,
+        #[arg(long)]
+        from: String,
+        #[arg(long, default_value = "dev")]
+        env: String,
+    },
 }
 
 fn main() {
@@ -331,6 +362,31 @@ fn main() {
                 println!("✓ {} example file(s) written (keys only)", written.len());
             })
         }
+        Command::Group { action } => match action {
+            GroupAction::List { env } => latch_core::groups::list(&platform, &env).map(|infos| {
+                if infos.is_empty() {
+                    println!("no groups in env '{}'", env);
+                }
+                for g in infos {
+                    let key = if g.key_held { "key held" } else { "NO KEY on this machine" };
+                    let content = if g.has_content { "content stored" } else { "no content yet" };
+                    println!("{} — {} member(s), {}, {}", g.name, g.members.len(), content, key);
+                    for m in &g.members {
+                        println!("    {}", m);
+                    }
+                }
+            }),
+            GroupAction::Resolve { name, source, env } | GroupAction::Adopt { name, from: source, env } => {
+                latch_core::groups::resolve(&platform, &cwd, &env, &name, &source).map(|r| {
+                    println!(
+                        "✓ group '{}' now follows {} :: {} member(s) updated — 'latch push' publishes it",
+                        r.name,
+                        source,
+                        r.fanned_out.len()
+                    );
+                })
+            }
+        },
         Command::Status { env } => {
             latch_core::ops::sync::status(&platform, &cwd, &env).map(|out| {
                 use latch_core::ops::sync::FileState as S;
