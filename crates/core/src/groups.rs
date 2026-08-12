@@ -33,13 +33,23 @@ pub const PRAGMA_PREFIX: &str = "# latch:group=";
 
 // ── Pragma parsing ──────────────────────────────────────────────────────
 
+/// Is `name` a valid group name? (D3c: '_' and '.' allowed — the docs'
+/// own `smtp_creds` example used an underscore that the old rule wrongly
+/// rejected.)
+fn valid_group_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
 /// Split a member file into (group name, body). None = not a group member.
 /// The body is everything after the pragma line, pragma excluded.
 pub fn parse_member(content: &[u8]) -> Option<(String, Vec<u8>)> {
     let text = String::from_utf8_lossy(content);
     let first = text.lines().next()?.trim();
     let name = first.strip_prefix(PRAGMA_PREFIX)?.trim();
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if !valid_group_name(name) {
         return None;
     }
     let body = match text.split_once('\n') {
@@ -47,6 +57,21 @@ pub fn parse_member(content: &[u8]) -> Option<(String, Vec<u8>)> {
         None => Vec::new(),
     };
     Some((name.to_string(), body))
+}
+
+/// D3c: a file whose first line LOOKS like a group pragma but whose name
+/// is invalid would otherwise be silently treated as a plain secret and
+/// drift from its group forever. Returns the bad name so commit can
+/// refuse loudly instead.
+pub fn malformed_pragma(content: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(content);
+    let first = text.lines().next()?.trim();
+    let name = first.strip_prefix(PRAGMA_PREFIX)?.trim();
+    if valid_group_name(name) {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 /// Is this body "empty" in the W12a sense (subscriber, never a change)?
@@ -194,6 +219,77 @@ fn baseline_save(p: &Platform, file: &BaselineFile) -> Result<(), LatchError> {
     p.files.write_atomic(&baseline_path(p), &raw)
 }
 
+/// B4: before a push, detect a group whose content moved BOTH locally and
+/// remotely away from the shared baseline — the cross-machine divergence
+/// W12b promises to catch loudly but the commit-time (local-only) check
+/// cannot see. Compares the clone's group content against origin's, using
+/// the local baseline fingerprint as the common ancestor.
+pub fn check_push_divergence(p: &Platform, repo: &Repo, env: &str) -> Result<(), LatchError> {
+    let store = CredStore::new(p);
+    if !repo.fetch()? {
+        return Ok(()); // offline — the plain push refusal will handle it
+    }
+    for enc in repo.list(&format!("_groups/{}", env))? {
+        let Some(name) = enc.strip_suffix(".enc") else {
+            continue;
+        };
+        let enc_rel = format!("_groups/{}/{}.enc", env, name);
+        // Three points: our working-tree content (ours), the remote's
+        // (theirs), and the shared ancestor at our last sync (HEAD — our
+        // pending commit is not made yet, so HEAD is exactly what both
+        // sides last agreed on). The commit-time baseline is useless here
+        // because commit already advanced it to `ours`.
+        let (Some(local_sealed), Some(remote_sealed)) =
+            (repo.read(&enc_rel)?, repo.read_remote(&enc_rel)?)
+        else {
+            continue; // group is new on one side — not a divergence
+        };
+        if local_sealed == remote_sealed {
+            continue; // identical bytes: no conflict
+        }
+        let Some(gkey) = key_get(&store, name, env)? else {
+            continue; // no key here to compare content meaningfully
+        };
+        let open = |sealed: &[u8]| envelope::open(&gkey.key, &gkey.id, sealed, &enc_rel).ok();
+        let (Some(local), Some(remote)) = (open(&local_sealed), open(&remote_sealed)) else {
+            continue; // different generation we can't read — leave S4 to it
+        };
+        let base = repo
+            .read_at("HEAD", &enc_rel)?
+            .and_then(|b| open(&b))
+            .unwrap_or_default();
+        let local_moved = local != base;
+        let remote_moved = remote != base;
+        if local_moved && remote_moved && local != remote {
+            let a = crate::ops::edit_diff::parse_env(&String::from_utf8_lossy(&local));
+            let b = crate::ops::edit_diff::parse_env(&String::from_utf8_lossy(&remote));
+            let mut diff_keys: BTreeSet<String> = BTreeSet::new();
+            for (k, v) in &a {
+                if b.get(k) != Some(v) {
+                    diff_keys.insert(k.clone());
+                }
+            }
+            for k in b.keys() {
+                if !a.contains_key(k) {
+                    diff_keys.insert(k.clone());
+                }
+            }
+            return Err(LatchError::other(
+                format!(
+                    "group '{}' diverged between machines; differing keys: {}",
+                    name,
+                    diff_keys.into_iter().collect::<Vec<_>>().join(", ")
+                ),
+                format!(
+                    "pull to see the other version, then pick a winner explicitly: latch group resolve {} --source <file> and push (the losing edit is overwritten)",
+                    name
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ── The commit-time engine ──────────────────────────────────────────────
 
 /// One discovered member of a group.
@@ -225,10 +321,23 @@ pub struct GroupReport {
     pub members: Vec<String>,
 }
 
-/// Scan ALL configured projects for group members in `env` files, apply
-/// the W12 rules, and write group content + member stubs into the clone.
+/// Scan every linked project for group members in `env` files, apply the
+/// W12 rules, and write group content + member stubs into the clone.
 /// Called from `commit` — the commit IS the group sync point.
-pub fn sync_groups(p: &Platform, repo: &Repo, env: &str) -> Result<Vec<GroupReport>, LatchError> {
+///
+/// All linked projects are swept, by design (W12d "global per
+/// environment"): the founding commit of a group must fan out to members
+/// that have never been committed yet — an empty subscriber file in
+/// another project joins on the first commit of any member. The commit
+/// report lists every stub written, so the fan-out is never silent.
+/// (`current_project` is accepted for call-site clarity / future use.)
+pub fn sync_groups(
+    p: &Platform,
+    repo: &Repo,
+    env: &str,
+    current_project: &str,
+) -> Result<Vec<GroupReport>, LatchError> {
+    let _ = current_project;
     let config = Config::load(p)?;
     let store = CredStore::new(p);
 

@@ -331,3 +331,195 @@ fn d2a_credential_file_keeps_a_backup() {
     assert!(store.get("key:one").unwrap().is_some());
     assert!(store.get("key:two").unwrap().is_some());
 }
+
+// ── Block 3 · sync & groups ─────────────────────────────────────────────
+
+// B2 · force keeps another machine's additions instead of deleting them.
+#[test]
+fn b2_force_preserves_remote_only_files() {
+    let (tmp, origin, _bare) = scratch();
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let proj = tmp.path().join("work/app");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join(".env"), "A=1\n").unwrap();
+    let cwd = proj.display().to_string();
+    init::run(&pa, &cwd, None).unwrap();
+    sync::commit(&pa, &cwd, "dev").unwrap();
+    sync::push(&pa, &cwd, "dev", false).unwrap();
+
+    // Machine B adds a SECOND file and pushes.
+    let store_a = CredStore::new(&pa);
+    let (raw, _) = store_a.get("key:app").unwrap().unwrap();
+    let b = Machine::new(tmp.path(), "home-b", &origin);
+    b.env.set("LATCH_KEY_APP", &hex::encode(&raw));
+    let pb = b.platform();
+    let proj_b = tmp.path().join("work-b/app");
+    std::fs::create_dir_all(&proj_b).unwrap();
+    init::run(&pb, &proj_b.display().to_string(), Some("app".into())).unwrap();
+    sync::pull(&pb, &proj_b.display().to_string(), "dev", false, false).unwrap();
+    std::fs::create_dir_all(proj_b.join("api")).unwrap();
+    std::fs::write(proj_b.join("api/.env"), "B=2\n").unwrap();
+    sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap();
+    sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+
+    // Machine A (stale) changes its file and force-pushes.
+    std::fs::write(proj.join(".env"), "A=99\n").unwrap();
+    sync::commit(&pa, &cwd, "dev").unwrap();
+    let err = sync::push(&pa, &cwd, "dev", false).unwrap_err();
+    assert!(format!("{err}").contains("S4"), "{err}");
+    sync::push(&pa, &cwd, "dev", true).unwrap();
+
+    // B's file must STILL exist at the origin after A's force (B2).
+    let probe = tmp.path().join("probe");
+    std::process::Command::new("git")
+        .args(["clone", "-q", &origin])
+        .arg(&probe)
+        .status()
+        .unwrap();
+    assert!(
+        probe.join("app/dev/api__.env.enc").exists(),
+        "force deleted another machine's file!"
+    );
+    assert!(probe.join("app/dev/.env.enc").exists());
+}
+
+// D1a · a committed-but-unpushed change is not reset away by a later pull.
+#[test]
+fn d1a_pull_preserves_unpushed_commit() {
+    let (tmp, origin, _bare) = scratch();
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let proj = tmp.path().join("work/app");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join(".env"), "V=1\n").unwrap();
+    let cwd = proj.display().to_string();
+    init::run(&pa, &cwd, None).unwrap();
+    sync::commit(&pa, &cwd, "dev").unwrap();
+    sync::push(&pa, &cwd, "dev", false).unwrap();
+
+    // Second machine pushes ahead so our next push is rejected, leaving
+    // us clean-but-ahead (the D1a trap).
+    let store_a = CredStore::new(&pa);
+    let (raw, _) = store_a.get("key:app").unwrap().unwrap();
+    let b = Machine::new(tmp.path(), "home-b", &origin);
+    b.env.set("LATCH_KEY_APP", &hex::encode(&raw));
+    let pb = b.platform();
+    let proj_b = tmp.path().join("work-b/app");
+    std::fs::create_dir_all(&proj_b).unwrap();
+    init::run(&pb, &proj_b.display().to_string(), Some("app".into())).unwrap();
+    sync::pull(&pb, &proj_b.display().to_string(), "dev", false, false).unwrap();
+    std::fs::create_dir_all(proj_b.join("api")).unwrap();
+    std::fs::write(proj_b.join("api/.env"), "X=1\n").unwrap();
+    sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap();
+    sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+
+    // A commits locally, push rejected → clean-but-ahead.
+    std::fs::write(proj.join(".env"), "V=2\n").unwrap();
+    sync::commit(&pa, &cwd, "dev").unwrap();
+    assert!(sync::push(&pa, &cwd, "dev", false).is_err());
+
+    // A pull now MUST report diverged and MUST NOT lose our commit.
+    let out = sync::pull(&pa, &cwd, "dev", false, true).unwrap();
+    assert!(out.diverged, "pull must flag divergence, not claim fresh (D1b)");
+    // Our unpushed V=2 survives (force publishes it, keeping B's file).
+    sync::push(&pa, &cwd, "dev", true).unwrap();
+    let probe = tmp.path().join("probe");
+    std::process::Command::new("git")
+        .args(["clone", "-q", &origin])
+        .arg(&probe)
+        .status()
+        .unwrap();
+    assert!(probe.join("app/dev/api__.env.enc").exists(), "B's file kept");
+}
+
+// D1d · commit in an empty checkout refuses the mass deletion.
+#[test]
+fn d1d_commit_refuses_wiping_everything() {
+    let (tmp, origin, _bare) = scratch();
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let proj = tmp.path().join("work/app");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join(".env"), "A=1\n").unwrap();
+    let cwd = proj.display().to_string();
+    init::run(&pa, &cwd, None).unwrap();
+    sync::commit(&pa, &cwd, "dev").unwrap();
+    sync::push(&pa, &cwd, "dev", false).unwrap();
+
+    // Fresh machine, links the project, commits in the EMPTY dir before
+    // pulling → must refuse instead of staging a full wipe.
+    let store_a = CredStore::new(&pa);
+    let (raw, _) = store_a.get("key:app").unwrap().unwrap();
+    let b = Machine::new(tmp.path(), "home-b", &origin);
+    b.env.set("LATCH_KEY_APP", &hex::encode(&raw));
+    let pb = b.platform();
+    let proj_b = tmp.path().join("work-b/app");
+    std::fs::create_dir_all(&proj_b).unwrap();
+    init::run(&pb, &proj_b.display().to_string(), Some("app".into())).unwrap();
+    let err = sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap_err();
+    assert!(format!("{err}").contains("delete all"), "{err}");
+}
+
+// D3c · a malformed group pragma is refused, not silently a plain secret.
+#[test]
+fn d3c_malformed_pragma_refused() {
+    let (tmp, origin, _bare) = scratch();
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let proj = tmp.path().join("work/app");
+    std::fs::create_dir_all(&proj).unwrap();
+    // A space in the name makes it invalid.
+    std::fs::write(proj.join(".env"), "# latch:group=bad name\nX=1\n").unwrap();
+    init::run(&pa, &proj.display().to_string(), None).unwrap();
+    let err = sync::commit(&pa, &proj.display().to_string(), "dev").unwrap_err();
+    assert!(format!("{err}").contains("invalid name"), "{err}");
+    // Underscores ARE valid now (the docs' smtp_creds example).
+    std::fs::write(proj.join(".env"), "# latch:group=smtp_creds\nX=1\n").unwrap();
+    sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
+}
+
+// B4 · a group edited on two machines is caught as divergence at push.
+#[test]
+fn b4_cross_machine_group_divergence_is_caught() {
+    let (tmp, origin, _bare) = scratch();
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let alpha = tmp.path().join("work/alpha");
+    let beta = tmp.path().join("work/beta");
+    std::fs::create_dir_all(&alpha).unwrap();
+    std::fs::create_dir_all(&beta).unwrap();
+    std::fs::write(alpha.join(".env"), "# latch:group=shared\nK=base\n").unwrap();
+    std::fs::write(beta.join(".env"), "# latch:group=shared\n").unwrap();
+    init::run(&pa, &alpha.display().to_string(), None).unwrap();
+    init::run(&pa, &beta.display().to_string(), None).unwrap();
+    sync::commit(&pa, &alpha.display().to_string(), "dev").unwrap();
+    sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap();
+
+    // Machine B takes both project keys + the group key, pulls, edits the
+    // group, pushes.
+    let store_a = CredStore::new(&pa);
+    let (ka, _) = store_a.get("key:alpha").unwrap().unwrap();
+    let (gk, _) = store_a.get("group:shared.dev").unwrap().unwrap();
+    let b = Machine::new(tmp.path(), "home-b", &origin);
+    b.env.set("LATCH_KEY_ALPHA", &hex::encode(&ka));
+    b.env.set("LATCH_GROUP_SHARED_DEV", &hex::encode(&gk));
+    let pb = b.platform();
+    let alpha_b = tmp.path().join("work-b/alpha");
+    std::fs::create_dir_all(&alpha_b).unwrap();
+    init::run(&pb, &alpha_b.display().to_string(), Some("alpha".into())).unwrap();
+    sync::pull(&pb, &alpha_b.display().to_string(), "dev", false, false).unwrap();
+    std::fs::write(alpha_b.join(".env"), "# latch:group=shared\nK=from-b\n").unwrap();
+    sync::commit(&pb, &alpha_b.display().to_string(), "dev").unwrap();
+    sync::push(&pb, &alpha_b.display().to_string(), "dev", false).unwrap();
+
+    // Machine A edits the SAME group differently, still on the old base,
+    // and pushes → must get the explicit divergence error, not a plain S4
+    // that would silently drop one side.
+    std::fs::write(alpha.join(".env"), "# latch:group=shared\nK=from-a\n").unwrap();
+    sync::commit(&pa, &alpha.display().to_string(), "dev").unwrap();
+    let err = sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("diverged between machines"), "{msg}");
+    assert!(msg.contains("group resolve"), "remedy names the fix: {msg}");
+}

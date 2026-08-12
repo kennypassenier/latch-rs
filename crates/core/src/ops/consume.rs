@@ -53,7 +53,7 @@ pub fn run(
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
-    let fresh = repo.refresh(false)?;
+    let refreshed = repo.refresh(false)?;
 
     let store = CredStore::new(p);
     let key = keys::for_env(&store, &proj.name, env_name)?.ok_or_else(|| {
@@ -113,7 +113,7 @@ pub fn run(
     Ok(RunOutcome {
         exit_code,
         injected: vars.len(),
-        stale: !fresh,
+        stale: !refreshed.is_current(),
     })
 }
 
@@ -187,7 +187,7 @@ pub struct VerifyOutcome {
 pub fn verify(p: &Platform, project: Option<&str>) -> Result<VerifyOutcome, LatchError> {
     let repo = repo_handle(p)?;
     repo.ensure()?;
-    let fresh = repo.refresh(false)?;
+    let refreshed = repo.refresh(false)?;
     let store = CredStore::new(p);
 
     let mut entries = Vec::new();
@@ -242,7 +242,7 @@ pub fn verify(p: &Platform, project: Option<&str>) -> Result<VerifyOutcome, Latc
     }
     Ok(VerifyOutcome {
         entries,
-        stale: !fresh,
+        stale: !refreshed.is_current(),
     })
 }
 

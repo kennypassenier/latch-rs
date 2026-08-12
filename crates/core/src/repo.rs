@@ -28,6 +28,30 @@ pub enum PushOutcome {
     NothingToPush,
 }
 
+/// What `refresh` actually did — so callers never claim "fresh" while
+/// serving stale content (D1b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefreshState {
+    /// Could not reach the remote; the cached clone is being used (S5).
+    Offline,
+    /// The clone now reflects the remote (reset, or already up to date).
+    Current,
+    /// Reached the remote, but kept local work (dirty or unpushed commits)
+    /// — the clone does NOT reflect the remote yet.
+    Diverged,
+}
+
+impl RefreshState {
+    /// Did we contact the remote at all?
+    pub fn reached_remote(&self) -> bool {
+        !matches!(self, RefreshState::Offline)
+    }
+    /// Does the clone now faithfully reflect the remote?
+    pub fn is_current(&self) -> bool {
+        matches!(self, RefreshState::Current)
+    }
+}
+
 impl<'a> Repo<'a> {
     pub fn new(p: &'a Platform<'a>, repo: &str, pat: Option<String>) -> Self {
         let url = if repo.contains("://") {
@@ -120,7 +144,7 @@ impl<'a> Repo<'a> {
     /// Refresh the clone from the remote: fetch + hard reset (the clone is
     /// entirely latch-managed; nobody edits it by hand). Offline (fetch
     /// fails) is only an error when `require_fresh`.
-    pub fn refresh(&self, require_fresh: bool) -> Result<bool, LatchError> {
+    pub fn refresh(&self, require_fresh: bool) -> Result<RefreshState, LatchError> {
         let fetch = self.git_in(&["fetch", "--quiet", "origin"])?;
         if fetch.status != 0 {
             if require_fresh {
@@ -132,27 +156,43 @@ impl<'a> Repo<'a> {
                     "check your network; for offline use, commands that read can run on the cached clone (S5)",
                 ));
             }
-            return Ok(false);
+            return Ok(RefreshState::Offline);
         }
-        // NEVER reset over committed-but-unpushed work: a dirty tree means
-        // staged ciphertexts awaiting push — data preservation beats
-        // freshness (found by the L4 tests: refresh after an offline
-        // commit must not destroy it).
-        let dirty = !self.git_in(&["status", "--porcelain"])?.stdout.is_empty();
         let has_remote = self
             .git_in(&["rev-parse", "--verify", &format!("origin/{}", BRANCH)])?
             .status
             == 0;
-        if has_remote && !dirty {
-            let out =
-                self.git_in(&["reset", "--hard", &format!("origin/{}", BRANCH), "--quiet"])?;
-            self.ok(
-                out,
-                "update local clone",
-                "remove ~/.latch/repo and pull again",
-            )?;
+        if !has_remote {
+            // Empty remote: nothing to take in; our clone IS current.
+            return Ok(RefreshState::Current);
         }
-        Ok(true)
+        // NEVER reset over local work that the remote hasn't seen. Two
+        // kinds: a dirty tree (staged ciphertexts from `latch commit`
+        // awaiting push) OR committed-but-unpushed commits (D1a — a
+        // git-committed push that got rejected; a plain porcelain check
+        // sees a CLEAN tree and used to hard-reset the commit away). Data
+        // preservation beats freshness.
+        let dirty = !self.git_in(&["status", "--porcelain"])?.stdout.is_empty();
+        let ahead = {
+            let out = self.git_in(&[
+                "rev-list",
+                "--count",
+                &format!("origin/{}..HEAD", BRANCH),
+            ])?;
+            String::from_utf8_lossy(&out.stdout).trim() != "0"
+        };
+        if dirty || ahead {
+            // D1b: we did reach the remote but are NOT reflecting it —
+            // callers must not report this as a clean fresh pull.
+            return Ok(RefreshState::Diverged);
+        }
+        let out = self.git_in(&["reset", "--hard", &format!("origin/{}", BRANCH), "--quiet"])?;
+        self.ok(
+            out,
+            "update local clone",
+            "remove ~/.latch/repo and pull again",
+        )?;
+        Ok(RefreshState::Current)
     }
 
     /// Stage everything and commit+push (W3) with S4 protection: if the
@@ -176,6 +216,21 @@ impl<'a> Repo<'a> {
                 if has_remote {
                     let out = self.git_in(&["reset", "--soft", &format!("origin/{}", BRANCH)])?;
                     self.ok(out, "rebase onto remote", "remove ~/.latch/repo and retry")?;
+                    // B2: after reset --soft the index holds the REMOTE
+                    // tree but our working tree is stale, so `add -A` would
+                    // stage every file another machine added (and we never
+                    // pulled) as a DELETION — silently destroying it on
+                    // force. checkout-index -a writes index entries that
+                    // are MISSING from the working tree back into it,
+                    // WITHOUT overwriting the files we actually changed —
+                    // so force means "my content wins, everyone else's is
+                    // preserved", never "my stale view deletes theirs".
+                    let out = self.git_in(&["checkout-index", "-a"])?;
+                    self.ok(
+                        out,
+                        "restore remote-only files before force",
+                        "remove ~/.latch/repo and retry",
+                    )?;
                 }
             }
         }
@@ -219,6 +274,28 @@ impl<'a> Repo<'a> {
     /// Read a file from the clone (None = absent).
     pub fn read(&self, rel: &str) -> Result<Option<Vec<u8>>, LatchError> {
         self.p.files.read(&format!("{}/{}", self.dir(), rel))
+    }
+
+    /// Fetch from origin without touching the working tree (B4: peek at
+    /// what the remote holds before deciding whether a push conflicts).
+    pub fn fetch(&self) -> Result<bool, LatchError> {
+        Ok(self.git_in(&["fetch", "--quiet", "origin"])?.status == 0)
+    }
+
+    /// Read a file as it exists at `origin/main` (None = absent there).
+    /// Requires a prior `fetch`. Bytes come straight from git's object
+    /// store, so the local working tree is never disturbed.
+    pub fn read_remote(&self, rel: &str) -> Result<Option<Vec<u8>>, LatchError> {
+        self.read_at(&format!("origin/{}", BRANCH), rel)
+    }
+
+    /// Read a file at an arbitrary git reference (None = absent there).
+    pub fn read_at(&self, reference: &str, rel: &str) -> Result<Option<Vec<u8>>, LatchError> {
+        let out = self.git_in(&["show", &format!("{}:{}", reference, rel)])?;
+        if out.status != 0 {
+            return Ok(None);
+        }
+        Ok(Some(out.stdout))
     }
 
     /// Write a file into the clone working tree (atomic).

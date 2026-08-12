@@ -335,6 +335,11 @@ fn main() {
                     ""
                 }
             );
+            if out.diverged {
+                println!(
+                    "  ⚠ you have unpushed local work — this pull did NOT take in the remote; push or reset first"
+                );
+            }
         }),
         Command::Run { env, command } => {
             let (prog, rest) = command.split_first().expect("clap requires at least one");

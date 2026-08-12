@@ -81,11 +81,13 @@ pub fn unflatten_checked(flat: &str) -> Result<String, LatchError> {
 /// `--env ../../x` reads and writes outside the intended prefix.
 pub fn validate_env(env: &str) -> Result<(), LatchError> {
     if env.is_empty()
+        || env == "."
+        || env == ".."
+        || env.contains("..")
+        || env.contains('/')
         || !env
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
-        || env.split('.').any(|c| c == "..")
-        || env.contains('/')
     {
         return Err(LatchError::other(
             format!("'{}' is not a valid environment name", env),

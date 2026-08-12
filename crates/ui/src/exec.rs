@@ -122,10 +122,15 @@ pub fn exec(cmd: Cmd, m: &Model, p: &Platform, ui_cwd: &str) -> Msg {
                 let dir = need_dir()?;
                 match sync::pull(p, &dir, &m.env, false, overwrite) {
                     Ok(out) => Msg::Op(OpResult::Done(format!(
-                        "✓ pulled: {} written, {} unchanged{}",
+                        "✓ pulled: {} written, {} unchanged{}{}",
                         out.written.len(),
                         out.unchanged.len(),
-                        if out.offline { " (offline cache)" } else { "" }
+                        if out.offline { " (offline cache)" } else { "" },
+                        if out.diverged {
+                            " ⚠ unpushed local work — remote NOT taken in"
+                        } else {
+                            ""
+                        }
                     ))),
                     Err(e) => {
                         let text = format!("{}", e);

@@ -217,7 +217,7 @@ Usage: latch key [OPTIONS] <COMMAND>
 
 Commands:
   show     Show the key's identity; --reveal prints the hex value (K5)
-  rotate   Mint the next key generation and re-encrypt (K3); --env creates or rotates a per-environment key (K2)
+  rotate   Mint the next key generation and re-encrypt (K3); --env creates or rotates a per-environment key (K2); --group rotates a group key
   backup   Export ALL credentials as one passphrase-encrypted file (K6)
   restore  Restore a backup file into this machine's credential store (K6)
   help     Print this message or the help of the given subcommand(s)

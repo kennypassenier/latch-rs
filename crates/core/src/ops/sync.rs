@@ -35,6 +35,20 @@ pub fn project_for(p: &Platform, cwd: &str) -> Result<ProjectCtx, LatchError> {
     })
 }
 
+/// D1d: a per-machine marker that this project's content has actually
+/// been materialized here (committed or pulled at least once). Its
+/// ABSENCE is what tells a genuine "delete the last file" apart from a
+/// fresh checkout where someone committed before pulling.
+fn seen_path(p: &Platform, project: &str) -> String {
+    format!("{}/seen/{}", p.latch_home, project)
+}
+fn mark_seen(p: &Platform, project: &str) -> Result<(), LatchError> {
+    p.files.write_atomic(&seen_path(p, project), b"1")
+}
+fn is_seen(p: &Platform, project: &str) -> Result<bool, LatchError> {
+    Ok(p.files.read(&seen_path(p, project))?.is_some())
+}
+
 fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
     let config = Config::load(p)?;
     let repo_name = config.repo.ok_or_else(|| {
@@ -87,6 +101,14 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
             .files
             .read(&format!("{}/{}", proj.dir, rel))?
             .ok_or_else(|| LatchError::other(format!("{} vanished mid-commit", rel), "retry"))?;
+        // D3c: a first line that looks like a group pragma but has an
+        // invalid name must not be silently filed as a plain secret.
+        if let Some(bad) = groups::malformed_pragma(&plain) {
+            return Err(LatchError::other(
+                format!("{} has a group pragma with an invalid name '{}'", rel, bad),
+                "group names are letters, digits, '-', '_' and '.'; fix the '# latch:group=' line",
+            ));
+        }
         if groups::parse_member(&plain).is_some() {
             // W12 member: the group engine below owns its stub + content;
             // here it only claims its slot so removal detection keeps it.
@@ -110,9 +132,33 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
 
     // Locally-deleted files leave the intent at commit (data dirs stay —
     // this is just the env file's ciphertext).
+    let existing_enc: Vec<String> = repo
+        .list(&prefix)?
+        .into_iter()
+        .filter(|e| e.ends_with(".enc"))
+        .collect();
+    // D1d: committing in an EMPTY project dir (a fresh machine where
+    // someone committed before pulling) would stage every ciphertext for
+    // deletion and the next push would publish that wipe. Refuse a
+    // commit that removes ALL files while adding none — almost certainly
+    // "I forgot to pull", not "delete everything".
+    let removing_all = !existing_enc.is_empty()
+        && local.is_empty()
+        && existing_enc.iter().all(|e| !kept.contains(e));
+    if removing_all && !is_seen(p, &proj.name)? {
+        return Err(LatchError::other(
+            format!(
+                "commit would delete all {} secret file(s) for {}/{} and add none",
+                existing_enc.len(),
+                proj.name,
+                env
+            ),
+            "run 'latch pull' first if this is a fresh checkout; to genuinely remove everything, delete the files after a pull so the intent is explicit",
+        ));
+    }
     let mut removed = Vec::new();
-    for existing in repo.list(&prefix)? {
-        if !kept.contains(&existing) {
+    for existing in &existing_enc {
+        if !kept.contains(existing) {
             repo.remove(&format!("{}/{}", prefix, existing))?;
             removed.push(discovery::unflatten(existing.trim_end_matches(".enc")));
         }
@@ -120,7 +166,10 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
 
     // W12: groups sync at commit time — one changed member becomes the
     // group content, everyone else is fanned out in this same commit.
-    let group_reports = groups::sync_groups(p, &repo, env)?;
+    let group_reports = groups::sync_groups(p, &repo, env, &proj.name)?;
+
+    // This machine has now materialized the project (D1d).
+    mark_seen(p, &proj.name)?;
 
     Ok(CommitOutcome {
         files,
@@ -137,6 +186,15 @@ pub fn push(p: &Platform, cwd: &str, env: &str, force: bool) -> Result<PushOutco
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
+    // B4: a shared group edited on two machines collides here as a plain
+    // git conflict whose remedies (--overwrite / --force) would silently
+    // drop one side. Before pushing, compare our group content against
+    // what the remote now holds; if BOTH moved off the shared baseline,
+    // raise the explicit W12b divergence error instead — unless the user
+    // already chose a side with --force.
+    if !force {
+        groups::check_push_divergence(p, &repo, env)?;
+    }
     repo.push(&format!("push {}/{}", proj.name, env), force)
 }
 
@@ -147,6 +205,9 @@ pub struct PullOutcome {
     pub written: Vec<String>,
     pub unchanged: Vec<String>,
     pub offline: bool,
+    /// D1b: reached the remote but the clone still holds unpushed local
+    /// work, so this pull did NOT reflect the remote — the shell warns.
+    pub diverged: bool,
 }
 
 /// Pull: refresh the clone (unless offline), decrypt EVERYTHING first
@@ -165,7 +226,11 @@ pub fn pull(
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
-    let fresh = if offline { false } else { repo.refresh(true)? };
+    let refreshed = if offline {
+        crate::repo::RefreshState::Offline
+    } else {
+        repo.refresh(true)?
+    };
 
     let store = CredStore::new(p);
     let key =
@@ -248,11 +313,16 @@ pub fn pull(
     for (name, body, member_id) in baseline_notes {
         groups::note_baseline(p, env, &name, &body, &member_id)?;
     }
+    // A pull materializes the project here (D1d).
+    if !written.is_empty() || !unchanged.is_empty() {
+        mark_seen(p, &proj.name)?;
+    }
 
     Ok(PullOutcome {
         written,
         unchanged,
-        offline: !fresh,
+        offline: !refreshed.reached_remote(),
+        diverged: refreshed == crate::repo::RefreshState::Diverged,
     })
 }
 
