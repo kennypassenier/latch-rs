@@ -132,10 +132,42 @@ machine is leaving your control.
 
 ## R11 · Release a new latch version (maintainer)
 
-```
-git tag v2.x.y && git push --tags
+### One-time signing setup (do this ONCE, before the first release)
+
+The self-updater (D4/AR20) trusts a release only if `SHA256SUMS` carries a
+valid minisign signature under a key baked into the binary. Generate the
+keypair once and keep the secret key OFFLINE (never on GitHub):
+
+```bash
+sudo pacman -S minisign            # Garuda
+minisign -G                        # → ~/.minisign/minisign.key + .pub
 ```
 
-CI builds, writes `SHA256SUMS`, publishes the GitHub Release with the
-exact asset names M5 consumes. Verify afterwards from any machine:
-`latch update` on the previous version must find, verify and install it.
+On Windows the tool is identical (`winget install jedisct1.minisign`,
+then `minisign -G`); or copy the same `minisign.key` across so both
+machines share one key.
+
+Then bake the PUBLIC key into the source and rebuild:
+- open `crates/core/src/ops/update.rs`
+- replace `RELEASE_PUBKEY` with the second line of `minisign.pub` (the
+  base64 blob, without the comment line)
+- commit `[meta]`, and cut releases from this build onward.
+
+Until a real key is set, `latch update` fails closed (refuses every
+release) — safe, but nobody can self-update, so do this before relying on
+updates.
+
+### Per release
+
+```bash
+git tag v2.x.y && git push --tags        # CI builds Linux + Windows + SHA256SUMS
+# wait for the release workflow to finish, then sign locally:
+scripts/sign-release.sh v2.x.y           # Garuda  (or scripts\sign-release.ps1 on Windows)
+```
+
+CI builds both OS binaries and one `SHA256SUMS`, publishes the Release,
+but does NOT sign (the secret key never touches GitHub). The sign script
+downloads the manifest, signs it with your offline key, and uploads
+`SHA256SUMS.minisig`. Verify afterwards from a previous build on each OS:
+`latch update` must find, verify the signature, and install; a release
+without a valid `.minisig` must be refused.
