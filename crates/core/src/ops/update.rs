@@ -287,4 +287,36 @@ mod tests {
         assert_eq!(sum_for(sums, ASSET_LINUX), Some("abc123".into()));
         assert_eq!(sum_for(sums, "missing"), None);
     }
+
+    #[test]
+    fn strictly_newer() {
+        assert!(is_strictly_newer("2.0.1", "2.0.0"));
+        assert!(is_strictly_newer("2.1.0", "2.0.9"));
+        assert!(is_strictly_newer("v3.0.0", "2.9.9"));
+        assert!(!is_strictly_newer("2.0.0", "2.0.0"));
+        assert!(!is_strictly_newer("1.9.9", "2.0.0"));
+    }
+
+    // D4: the REAL production key (Kenny's, baked into RELEASE_PUBKEY)
+    // accepts a signature made by the actual C `minisign` tool — not just
+    // the rsign-generated vectors used elsewhere. This is a captured
+    // end-to-end check: `printf 'latch-signing-check-v2'` signed on
+    // Kenny's machine, verified here through the exact code the updater
+    // uses. If the crate ever stops accepting minisign's "hashed" format,
+    // this fails and the updater would reject real releases.
+    #[test]
+    fn real_minisign_signature_verifies_against_baked_in_key() {
+        let data = b"latch-signing-check-v2";
+        let sig = "untrusted comment: signature from minisign secret key\n\
+RUQWCzzUBquIHGlzPhGHiZWet+dfXU8agZMeKc+vXqBKchlyMvmbPKdXKoV82QHkTWZu0JvYAjLqLdAShMoSGv7q7tkVRHQ4AQ4=\n\
+trusted comment: timestamp:1786512130\tfile:latch-check.txt\thashed\n\
+bNJX4Crqi7E+Xp8QGT+0HGVBBnh4Rzy3FYgk7asSRVtbnCzic2nw74U8bh3iJOfy+r1XdgD277rz33OWQfPkBg==\n";
+        verify_signature_with(data, sig.as_bytes(), RELEASE_PUBKEY)
+            .expect("real minisign signature must verify against the production key");
+        // A one-byte change to the data must break it.
+        assert!(
+            verify_signature_with(b"latch-signing-check-v3", sig.as_bytes(), RELEASE_PUBKEY)
+                .is_err()
+        );
+    }
 }
