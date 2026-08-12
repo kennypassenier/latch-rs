@@ -81,6 +81,29 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
 ### `completions_tests.rs` (1, cli)
 - bash/zsh/fish generation against the real binary.
 
+### `m7_surface_tests.rs` (2, cli) — the whole surface, headless
+- Every user-reachable verb (except `update`, mock-covered in l7) runs
+  against the real binary without a TTY under a hard timeout: it must
+  complete or fail with a remedy line — a hang or a bare error fails the
+  suite (M7). The D6 snapshot pins every `--help` text in
+  `tests/snapshots/cli_surface.txt`; intentional surface changes are
+  regenerated with `UPDATE_CLI_SNAPSHOT=1` and show up as a reviewable
+  diff.
+
+### `exec_tests.rs` (1, ui) — the Cmd→core mapping against real git
+- World refresh (states, key cells, sources), commit/push mapping, save
+  round-trip that really commits, masked diff, S4 push conflict surfacing
+  as a Conflict op (and the deliberate force resolving it), history load,
+  error mapping keeps the remedy, doctor snapshot.
+
+## Coverage measurement
+
+CI's `coverage` job runs `cargo llvm-cov --summary-only` over the three
+v2 crates on every push — informational, so the measured number is
+always one click away and drift is visible. Run locally with
+`cargo llvm-cov -p latch-core -p latch-cli -p latch-ui --summary-only`
+(needs `cargo install cargo-llvm-cov`).
+
 ## Standing rules
 
 1. Red CI blocks merge.

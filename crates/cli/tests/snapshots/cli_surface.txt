@@ -1,0 +1,300 @@
+═══ latch --help
+Encrypted .env secrets, done right (v2)
+
+Usage: latch [OPTIONS] <COMMAND>
+
+Commands:
+  login        First-time setup on this machine: PAT + secrets repo, validated live, stored in the keyring or the encrypted credential file (M1)
+  init         Link this directory to a project (W1); creates its key on first use
+  commit       Encrypt this project's env files into the local clone — offline (W2)
+  push         Upload committed secrets (W3); refuses if the remote moved (S4)
+  pull         Download and decrypt this project's env files (W4), all-or-nothing
+  status       Local vs. committed state per file (W5)
+  run          Run a command with secrets injected into its environment — nothing ever touches disk (W6). Works offline on the cached clone (S5)
+  history      List the versions of this project's secrets (S3)
+  rollback     Restore this project's secrets to an older version in the clone; push to publish, pull to apply locally (S3)
+  verify       Authenticate every ciphertext in the repository without writing anything (S6)
+  state        Where does every credential come from, and what is missing? (W8)
+  reset        Wipe the local clone + session cache; credentials and config stay (W9)
+  diff         What would push change? Key names only; --reveal shows values (W10)
+  edit         Edit a secret file in $EDITOR via tmpfs — zero plaintext on disk (W11)
+  example      Write keys-only .env.example files (D3 — explicit, never automatic)
+  group        W12 file groups: shared content across projects via a pragma line
+  key          Key management: show, rotate, backup, restore (K2/K3/K5/K6)
+  ui           Open the management TUI (G1)
+  project      Manage project↔directory links on this machine (D5)
+  path         Where latch is installed and whether it is on PATH (M4)
+  update       Self-update from GitHub Releases — checksum-verified, previous binary kept, new binary proven to run before replacing (M5)
+  completions  Print shell completions (D7): bash, zsh or fish
+  clone        M2 machine clone: move credentials to another machine, E2E-encrypted
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+  -V, --version          Print version
+
+═══ latch login --help
+First-time setup on this machine: PAT + secrets repo, validated live, stored in the keyring or the encrypted credential file (M1)
+
+Usage: latch login [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --pat <PAT>        GitHub personal access token (or set LATCH_PAT)
+      --repo <REPO>      Secrets repository as owner/name
+  -h, --help             Print help
+
+═══ latch init --help
+Link this directory to a project (W1); creates its key on first use
+
+Usage: latch init [OPTIONS]
+
+Options:
+      --name <NAME>      Project name (default: directory name)
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch commit --help
+Encrypt this project's env files into the local clone — offline (W2)
+
+Usage: latch commit [OPTIONS]
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch push --help
+Upload committed secrets (W3); refuses if the remote moved (S4)
+
+Usage: latch push [OPTIONS]
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --force            Make YOUR content the newest version (history is kept)
+  -h, --help             Print help
+
+═══ latch pull --help
+Download and decrypt this project's env files (W4), all-or-nothing
+
+Usage: latch pull [OPTIONS]
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --offline          Use the cached clone without contacting the remote (S5)
+      --overwrite        Overwrite local files that differ from the incoming content
+  -h, --help             Print help
+
+═══ latch status --help
+Local vs. committed state per file (W5)
+
+Usage: latch status [OPTIONS]
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch run --help
+Run a command with secrets injected into its environment — nothing ever touches disk (W6). Works offline on the cached clone (S5)
+
+Usage: latch run [OPTIONS] <COMMAND>...
+
+Arguments:
+  <COMMAND>...  The command and its arguments (after --)
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch history --help
+List the versions of this project's secrets (S3)
+
+Usage: latch history [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch rollback --help
+Restore this project's secrets to an older version in the clone; push to publish, pull to apply locally (S3)
+
+Usage: latch rollback [OPTIONS] <REFERENCE>
+
+Arguments:
+  <REFERENCE>  
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch verify --help
+Authenticate every ciphertext in the repository without writing anything (S6)
+
+Usage: latch verify [OPTIONS]
+
+Options:
+      --non-interactive    Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --project <PROJECT>  
+  -h, --help               Print help
+
+═══ latch state --help
+Where does every credential come from, and what is missing? (W8)
+
+Usage: latch state [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch reset --help
+Wipe the local clone + session cache; credentials and config stay (W9)
+
+Usage: latch reset [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --yes              Skip the confirmation prompt
+  -h, --help             Print help
+
+═══ latch diff --help
+What would push change? Key names only; --reveal shows values (W10)
+
+Usage: latch diff [OPTIONS]
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --reveal           
+  -h, --help             Print help
+
+═══ latch edit --help
+Edit a secret file in $EDITOR via tmpfs — zero plaintext on disk (W11)
+
+Usage: latch edit [OPTIONS] [FILE]
+
+Arguments:
+  [FILE]  File to edit (default .env)
+
+Options:
+      --env <ENV>        [default: dev]
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch example --help
+Write keys-only .env.example files (D3 — explicit, never automatic)
+
+Usage: latch example [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch group --help
+W12 file groups: shared content across projects via a pragma line
+
+Usage: latch group [OPTIONS] <COMMAND>
+
+Commands:
+  list     Show every group for the environment, with members and key status
+  resolve  Pick the winner after a divergence error (W12b): SOURCE's content becomes the group content; all other members are overwritten
+  adopt    Make a new member's differing content THE group content (W12c)
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch key --help
+Key management: show, rotate, backup, restore (K2/K3/K5/K6)
+
+Usage: latch key [OPTIONS] <COMMAND>
+
+Commands:
+  show     Show the key's identity; --reveal prints the hex value (K5)
+  rotate   Mint the next key generation and re-encrypt (K3); --env creates or rotates a per-environment key (K2)
+  backup   Export ALL credentials as one passphrase-encrypted file (K6)
+  restore  Restore a backup file into this machine's credential store (K6)
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch ui --help
+Open the management TUI (G1)
+
+Usage: latch ui [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch project --help
+Manage project↔directory links on this machine (D5)
+
+Usage: latch project [OPTIONS] <COMMAND>
+
+Commands:
+  list    Show every linked project
+  bind    Link an EXISTING project to a directory (default: here)
+  unbind  Forget the link on this machine (keys and repo content stay)
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch path --help
+Where latch is installed and whether it is on PATH (M4)
+
+Usage: latch path [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch update --help
+Self-update from GitHub Releases — checksum-verified, previous binary kept, new binary proven to run before replacing (M5)
+
+Usage: latch update [OPTIONS]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch completions --help
+Print shell completions (D7): bash, zsh or fish
+
+Usage: latch completions [OPTIONS] <SHELL>
+
+Arguments:
+  <SHELL>  [possible values: bash, elvish, fish, powershell, zsh]
+
+Options:
+      --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+  -h, --help             Print help
+
+═══ latch clone --help
+M2 machine clone: move credentials to another machine, E2E-encrypted
+
+Usage: latch clone [OPTIONS] [COMMAND]
+
+Commands:
+  offer   (target) Generate an offer for this machine to receive credentials
+  create  (source) Create a sealed payload for an offer
+  apply   (target) Apply a payload against this machine's pending offer
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --non-interactive    Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --to <TO>            ssh target (user@host) — runs the whole dance in one command
+      --project <PROJECT>  Limit to one project
+      --env <ENV>          Limit to one environment of that project
+  -h, --help               Print help
+

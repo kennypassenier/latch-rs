@@ -448,3 +448,54 @@ fn l4a_diff_edit_examples() {
         .unwrap_err();
     assert!(format!("{err}").contains("TYPO"), "{err}");
 }
+
+#[test]
+fn s5_offline_cache_serves_when_origin_unreachable() {
+    let (tmp, origin) = scratch();
+    let proj = tmp.path().join("work-a/offapp");
+    write(&proj.join(".env"), "TOKEN=cached\n");
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let cwd = proj.display().to_string();
+    latch_core::ops::init::run(&pa, &cwd, None).unwrap();
+    sync::commit(&pa, &cwd, "dev").unwrap();
+    sync::push(&pa, &cwd, "dev", false).unwrap();
+
+    // Simulate a network outage: the file:// origin stops existing.
+    let bare = tmp.path().join("origin.git");
+    let parked = tmp.path().join("origin.gone");
+    std::fs::rename(&bare, &parked).unwrap();
+
+    // W6/S5: run still injects from the cached clone, and REPORTS the
+    // staleness instead of hiding it.
+    let out_file = tmp.path().join("offline-run.txt");
+    let cmd = format!("printf '%s' \"$TOKEN\" > {}", out_file.display());
+    let run = latch_core::ops::consume::run(&pa, &cwd, "dev", "sh", &["-c", &cmd]).unwrap();
+    assert_eq!(run.exit_code, 0);
+    assert!(run.stale, "outage must surface as a stale notice");
+    assert_eq!(std::fs::read_to_string(&out_file).unwrap(), "cached");
+
+    // Plain pull requires freshness and must FAIL LOUDLY, naming S5.
+    let err = sync::pull(&pa, &cwd, "dev", false, true).unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("cannot reach"), "{msg}");
+    assert!(
+        msg.contains("S5"),
+        "the remedy points at offline mode: {msg}"
+    );
+
+    // pull --offline serves the cache and says so.
+    std::fs::remove_file(proj.join(".env")).unwrap();
+    let pulled = sync::pull(&pa, &cwd, "dev", true, true).unwrap();
+    assert!(pulled.offline);
+    assert_eq!(pulled.written, vec![".env"]);
+    assert_eq!(
+        std::fs::read_to_string(proj.join(".env")).unwrap(),
+        "TOKEN=cached\n"
+    );
+
+    // Outage over: normal pull is fresh again.
+    std::fs::rename(&parked, &bare).unwrap();
+    let pulled = sync::pull(&pa, &cwd, "dev", false, true).unwrap();
+    assert!(!pulled.offline);
+}
