@@ -13,7 +13,9 @@ use crate::repo::Repo;
 
 use super::sync::project_for;
 
-pub(crate) fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
+/// Build the repo handle from config + stored PAT — shared by every verb
+/// and by the UI shell (G1: shells never re-implement this).
+pub fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
     let config = Config::load(p)?;
     let repo_name = config.repo.ok_or_else(|| {
         LatchError::other(

@@ -129,6 +129,8 @@ enum Command {
         #[command(subcommand)]
         action: KeyAction,
     },
+    /// Open the management TUI (G1).
+    Ui,
     /// M2 machine clone: move credentials to another machine, E2E-encrypted.
     Clone {
         /// ssh target (user@host) — runs the whole dance in one command.
@@ -456,6 +458,7 @@ fn main() {
                 })
             }
         },
+        Command::Ui => latch_ui::run(),
         Command::Key { action } => match action {
             KeyAction::Show { env, reveal } => {
                 latch_core::ops::keyops::show(&platform, &cwd, env.as_deref(), reveal).map(|k| {
