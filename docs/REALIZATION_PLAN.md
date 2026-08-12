@@ -68,7 +68,7 @@ pass, TEST_PLAN maintained throughout, legacy docs archived.
 | L5 keys & machines (K2, K3, K5, K6, M2) | ✅ done |
 | L6 management TUI (G1-G9) | ✅ done |
 | L7 lifecycle (M5, M4, D7, D5, release workflow) | ✅ done |
-| L8 cutover of the real secrets repo | ⏸ awaiting Kenny's explicit go, step by step |
+| L8 cutover of the real secrets repo | ∅ obsolete — nothing uses latch v1 anymore (Kenny, 2026-08-12); v2 starts fresh with 'latch login' whenever a first project needs it |
 | L9 documentation | ✅ done |
 
 55 automated tests green; clippy clean; CI enforcing.
