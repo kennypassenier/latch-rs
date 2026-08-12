@@ -12,11 +12,11 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 
 | Field | Value |
 |---|---|
-| Current phase | 7-10 · retro-fit pass (procedure formalized mid-project) |
-| Last completed gate | evaluation form 2026-08-12: all 11 findings → Close |
-| Next gate | approval form SCOPE/CLAUDE/INVENTORY; then tech-choice + critic mini-rounds; docs approval; release report ("Tag & release?" = Kenny's go); retro |
+| Current phase | 10 · retrospective (last gate) |
+| Last completed gate | Form 3 (2026-08-12): milestone report + docs approved + release |
+| Next gate | Form 4 · retrospective (lessons → dev-procedure repo) |
 | AFK mode | off |
-| Build state | L0-L9 + hardening + Windows/D4 done; ~90 tests green, CI enforcing, v2.0.0-dev on `v2-redesign` |
+| Build state | **v2.0.0 released** — tagged, merged to `main`, GitHub Release signed (minisign); 88 tests green, CI enforcing |
 
 ## Deferred to end-of-project (Kenny-gated)
 
