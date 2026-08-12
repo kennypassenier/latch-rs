@@ -100,7 +100,10 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
 
 CI's `coverage` job runs `cargo llvm-cov --summary-only` over the three
 v2 crates on every push — informational, so the measured number is
-always one click away and drift is visible. Run locally with
+always one click away and drift is visible. First measurement
+(2026-08-12, run 31551173482): **73.9% lines · 76.6% regions · 69.9%
+functions**. The uncovered remainder is dominated by CLI print arms and
+real-platform adapters (keyring/terminal paths that only run live). Run locally with
 `cargo llvm-cov -p latch-core -p latch-cli -p latch-ui --summary-only`
 (needs `cargo install cargo-llvm-cov`).
 
