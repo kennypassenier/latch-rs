@@ -19,6 +19,13 @@ pub trait Env {
 pub trait Files {
     fn read(&self, path: &str) -> Result<Option<Vec<u8>>, LatchError>;
     fn write_atomic(&self, path: &str, content: &[u8]) -> Result<(), LatchError>;
+    /// Atomically write an EXECUTABLE file (0755): temp + chmod + rename,
+    /// so a crash never leaves a written-but-not-executable binary (K1,
+    /// the M5 self-update placement). Default mirrors write_atomic for
+    /// backends where the mode is irrelevant (the mock).
+    fn write_executable(&self, path: &str, content: &[u8]) -> Result<(), LatchError> {
+        self.write_atomic(path, content)
+    }
     fn remove(&self, path: &str) -> Result<(), LatchError>;
     /// Create a file exclusively (fails if it exists) — the AR12 lock
     /// primitive.

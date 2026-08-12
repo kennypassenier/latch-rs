@@ -344,17 +344,72 @@ pub(crate) fn enumerate_slots(p: &Platform, store: &CredStore) -> Result<Vec<Str
     Ok(out)
 }
 
+/// Like [`enumerate_slots`] but also returns the candidate slots that the
+/// repo layout expects yet this machine does NOT hold (K1: a backup that
+/// silently omits a key it can't see must SAY so, not report success as
+/// if complete).
+fn enumerate_with_skipped(
+    p: &Platform,
+    store: &CredStore,
+) -> Result<(Vec<String>, Vec<String>), LatchError> {
+    let mut candidates: std::collections::BTreeSet<String> = ["pat".to_string()].into();
+    let config = crate::config::Config::load(p)?;
+    let mut envs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if let Ok(repo) = repo_handle(p) {
+        if repo.ensure().is_ok() {
+            for rel in repo.list("")? {
+                let mut parts = rel.split('/');
+                match (parts.next(), parts.next(), parts.next()) {
+                    (Some("_groups"), Some(env), Some(name)) => {
+                        if let Some(n) = name.strip_suffix(".enc") {
+                            candidates.insert(format!("group:{}.{}", n, env));
+                        }
+                    }
+                    (Some(project), Some(env), Some(_file)) => {
+                        candidates.insert(format!("key:{}", project));
+                        candidates.insert(format!("key:{}", keys::label_for(project, Some(env))));
+                        envs.insert(env.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    for proj in &config.projects {
+        candidates.insert(format!("key:{}", proj.name));
+        for e in &envs {
+            candidates.insert(format!("key:{}", keys::label_for(&proj.name, Some(e))));
+        }
+    }
+    for slot in store.file_slots()? {
+        candidates.insert(slot);
+    }
+    let mut held = Vec::new();
+    let mut skipped = Vec::new();
+    for slot in candidates {
+        if store.get(&slot)?.is_some() {
+            held.push(slot);
+        } else {
+            skipped.push(slot);
+        }
+    }
+    Ok((held, skipped))
+}
+
 #[derive(Debug)]
 pub struct BackupOutcome {
     pub path: String,
     pub slots: Vec<String>,
+    /// Candidate slots the repo expects but this machine doesn't hold —
+    /// the backup is complete only for what this machine can see (K1).
+    pub skipped: Vec<String>,
 }
 
 /// K6: one passphrase-encrypted file holding every credential this
 /// machine has — the "all machines lost" recovery path.
 pub fn backup(p: &Platform, dest: &str) -> Result<BackupOutcome, LatchError> {
     let store = CredStore::new(p);
-    let slots = enumerate_slots(p, &store)?;
+    let (slots, skipped) = enumerate_with_skipped(p, &store)?;
     if slots.is_empty() {
         return Err(LatchError::other(
             "nothing to back up — no credentials stored on this machine",
@@ -385,6 +440,7 @@ pub fn backup(p: &Platform, dest: &str) -> Result<BackupOutcome, LatchError> {
     Ok(BackupOutcome {
         path: dest.to_string(),
         slots,
+        skipped,
     })
 }
 

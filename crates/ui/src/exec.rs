@@ -238,10 +238,16 @@ pub fn exec(cmd: Cmd, m: &Model, p: &Platform, ui_cwd: &str) -> Msg {
             }
             Cmd::Backup { path } => {
                 let out = keyops::backup(p, &path)?;
+                let skipped = if out.skipped.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ⚠ {} key(s) not on this machine skipped", out.skipped.len())
+                };
                 Msg::Op(OpResult::Done(format!(
-                    "✓ {} credential(s) backed up to {}",
+                    "✓ {} credential(s) backed up to {}{}",
                     out.slots.len(),
-                    out.path
+                    out.path,
+                    skipped
                 )))
             }
             Cmd::Restore { path } => {

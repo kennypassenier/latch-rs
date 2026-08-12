@@ -150,14 +150,12 @@ pub fn run(p: &Platform, current_version: &str, exe: &str) -> Result<UpdateOutco
         p.files.write_atomic(&previous, &current)?;
         let _ = p.proc.run("chmod", &["755", &previous], &[], None);
     }
-    p.files.write_atomic(exe, &binary)?;
-    let chmod = p.proc.run("chmod", &["755", exe], &[], None)?;
-    if chmod.status != 0 {
-        return Err(LatchError::other(
-            "installed but could not mark executable",
-            format!("run: chmod 755 {}", exe),
-        ));
-    }
+    // K1: place the new binary atomically at 0755 — temp + rename
+    // preserves the mode, so a power cut can never leave a
+    // written-but-not-yet-executable binary (the old write-then-chmod had
+    // exactly that window). If a restore is ever needed, the previous
+    // binary is at <exe>.prev — 'mv <exe>.prev <exe>'.
+    p.files.write_executable(exe, &binary)?;
     p.files.remove(&staging)?;
 
     Ok(UpdateOutcome::Updated {

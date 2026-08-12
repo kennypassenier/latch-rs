@@ -252,7 +252,30 @@ enum GroupAction {
     },
 }
 
+/// K1: refuse to dump core. latch holds decrypted secrets and derived
+/// keys in memory; a core file would spill them to disk. PR_SET_DUMPABLE
+/// also blocks ptrace by another process at the same uid.
+fn harden_process() {
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);
+        let zero = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        libc::setrlimit(libc::RLIMIT_CORE, &zero);
+    }
+}
+
+/// K1: ~/.latch holds the credential file and clone — make the directory
+/// itself 0700 (its files are already 0600, but a 0755 dir leaks names).
+fn secure_latch_home(home: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::create_dir_all(home);
+    let _ = std::fs::set_permissions(home, std::fs::Permissions::from_mode(0o700));
+}
+
 fn main() {
+    harden_process();
     let cli = Cli::parse();
 
     let env = RealEnv;
@@ -261,6 +284,8 @@ fn main() {
     let prompt = RealPrompt::detect(cli.non_interactive);
     let clock = RealClock;
     let proc = RealProc;
+    let home = latch_home(&env);
+    secure_latch_home(&home);
     let platform = Platform {
         env: &env,
         files: &files,
@@ -268,7 +293,7 @@ fn main() {
         prompt: &prompt,
         clock: &clock,
         proc: &proc,
-        latch_home: latch_home(&env),
+        latch_home: home,
         runtime_dir: runtime_dir(&env),
     };
 
@@ -399,7 +424,10 @@ fn main() {
                 }
             })
         }
-        Command::State => latch_core::ops::consume::state(&platform).map(|st| {
+        Command::State => {
+            // K1: opportunistically sweep an abandoned clone offer.
+            let _ = latch_core::ops::clone::cleanup_expired_offer(&platform);
+            latch_core::ops::consume::state(&platform).map(|st| {
             println!("latch home   : {}", st.latch_home);
             println!("repository   : {}", st.repo.as_deref().unwrap_or("(not set — latch login)"));
             println!(
@@ -423,7 +451,8 @@ fn main() {
                     }
                 );
             }
-        }),
+        })
+        }
         Command::Reset { yes } => latch_core::ops::consume::reset(&platform, yes)
             .map(|()| println!("✓ local clone wiped — the next command re-clones")),
         Command::Diff { env, reveal } => {
@@ -587,6 +616,16 @@ fn main() {
                     println!("✓ {} credential(s) backed up to {}", b.slots.len(), b.path);
                     for s in &b.slots {
                         println!("    {}", s);
+                    }
+                    if !b.skipped.is_empty() {
+                        println!(
+                            "  ⚠ {} key(s) the repo expects are NOT on this machine and were skipped:",
+                            b.skipped.len()
+                        );
+                        for s in &b.skipped {
+                            println!("    (skipped) {}", s);
+                        }
+                        println!("    back up from a machine that holds them for a complete escrow");
                     }
                 })
             }

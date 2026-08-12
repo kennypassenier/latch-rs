@@ -87,10 +87,14 @@ pub struct CredStore<'a> {
 
 impl<'a> CredStore<'a> {
     pub fn new(p: &'a Platform<'a>) -> Self {
-        Self {
-            p,
-            session_ttl: DEFAULT_SESSION_TTL,
-        }
+        // K1: honor the configured session TTL (Some(0) = never cache =
+        // always prompt) instead of ignoring it — the field used to be
+        // dead config. A missing/invalid config falls back to the default.
+        let session_ttl = crate::config::Config::load(p)
+            .ok()
+            .and_then(|c| c.session_ttl)
+            .unwrap_or(DEFAULT_SESSION_TTL);
+        Self { p, session_ttl }
     }
 
     pub fn with_session_ttl(p: &'a Platform<'a>, ttl: u64) -> Self {
@@ -228,7 +232,8 @@ impl<'a> CredStore<'a> {
             return Ok((map, cf.salt, key));
         }
         // First use: create with a new salt and a passphrase.
-        let passphrase = match self.p.env.var("LATCH_PASSPHRASE") {
+        use zeroize::Zeroize;
+        let mut passphrase = match self.p.env.var("LATCH_PASSPHRASE") {
             Some(p) => p,
             None => self.p.prompt.passphrase(
                 "no OS keyring here — set a passphrase for the latch credential file",
@@ -237,6 +242,7 @@ impl<'a> CredStore<'a> {
         let mut salt = [0u8; SALT_LEN];
         fill_random(&mut salt);
         let key = kdf::derive_key(&passphrase, &salt)?;
+        passphrase.zeroize(); // K1
         self.cache_session_key(&key)?;
         Ok((SlotMap::default(), salt, key))
     }
@@ -270,17 +276,21 @@ impl<'a> CredStore<'a> {
     /// AR11: derived-key session cache in tmpfs. Env passphrase bypasses
     /// everything; a fresh prompt refreshes the cache.
     fn unlock_key(&self, salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN], LatchError> {
-        if let Some(p) = self.p.env.var("LATCH_PASSPHRASE") {
-            return kdf::derive_key(&p, salt);
+        use zeroize::Zeroize;
+        if let Some(mut p) = self.p.env.var("LATCH_PASSPHRASE") {
+            let key = kdf::derive_key(&p, salt);
+            p.zeroize(); // K1: don't leave the passphrase in memory
+            return key;
         }
         if let Some(cached) = self.read_session_key()? {
             return Ok(cached);
         }
-        let passphrase = self
+        let mut passphrase = self
             .p
             .prompt
             .passphrase("latch credential file passphrase")?;
         let key = kdf::derive_key(&passphrase, salt)?;
+        passphrase.zeroize();
         self.cache_session_key(&key)?;
         Ok(key)
     }

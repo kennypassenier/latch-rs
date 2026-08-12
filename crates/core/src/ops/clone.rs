@@ -97,6 +97,20 @@ pub struct OfferOutcome {
     pub offer: String,
 }
 
+/// K1: remove an abandoned offer secret whose TTL has elapsed. An offer
+/// that is never answered would otherwise leave its X25519 secret in
+/// ~/.latch indefinitely; callers (state/doctor, a new offer) sweep it.
+pub fn cleanup_expired_offer(p: &Platform) -> Result<bool, LatchError> {
+    let offer_path = format!("{}/{}", p.latch_home, OFFER_FILE);
+    if let Some(mtime) = p.files.mtime_unix(&offer_path)? {
+        if p.clock.now_unix().saturating_sub(mtime) > OFFER_TTL_SECS {
+            p.files.remove(&offer_path)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Generate a fresh offer on the RECEIVING machine. The secret half waits
 /// (0600, 15-minute TTL) for `latch clone apply`; the printed offer
 /// string travels to the source machine.

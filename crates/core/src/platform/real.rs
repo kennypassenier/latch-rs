@@ -71,6 +71,38 @@ impl Files for RealFiles {
         Ok(())
     }
 
+    fn write_executable(&self, path: &str, content: &[u8]) -> Result<(), LatchError> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let p = std::path::Path::new(path);
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        let tmp = format!("{}.tmp-exe", path);
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o755)
+                .open(&tmp)
+                .map_err(|e| LatchError::other(format!("write {}: {}", tmp, e), "check permissions"))?;
+            f.write_all(content)
+                .map_err(|e| LatchError::other(format!("write {}: {}", tmp, e), "check disk space"))?;
+            f.sync_all().ok();
+        }
+        // Rename preserves the 0755 mode, so the binary is executable the
+        // instant it appears at `path` — no write-then-chmod window (K1).
+        std::fs::rename(&tmp, path)
+            .map_err(|e| LatchError::other(format!("rename to {}: {}", path, e), "check permissions"))?;
+        if let Some(parent) = p.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                dir.sync_all().ok();
+            }
+        }
+        Ok(())
+    }
+
     fn remove(&self, path: &str) -> Result<(), LatchError> {
         match std::fs::remove_file(path) {
             Ok(()) => Ok(()),
