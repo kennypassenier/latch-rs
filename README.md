@@ -72,8 +72,9 @@ src/          latch-legacy (v1) — kept beside, frozen
 docs/legacy/  v1 documentation, archived
 ```
 
-v2 lives on this branch as `latch`; the v1 binary remains available as
-`latch-legacy` until the cutover completes.
+v2 is the mainline (`latch`, released as 2.0.0). The v1 code stays in the
+tree as the frozen `latch-legacy` package for reference; it is not built
+by default and receives no changes.
 
 ## License
 
