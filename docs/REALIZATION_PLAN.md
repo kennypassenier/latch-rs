@@ -55,6 +55,24 @@ USER_GUIDE (per feature ID), DEBUGGING_GUIDE (evidence trail +
 symptom→cause), OPERATIONS_RUNBOOK, ARCHITECTURE_REFERENCE, README honesty
 pass, TEST_PLAN maintained throughout, legacy docs archived.
 
+## Status (2026-08-12)
+
+| Milestone | State |
+|---|---|
+| L0 workspace + envelope + CI | ✅ done |
+| L1 platform traits + credentials (K4, AR11) | ✅ done |
+| L2 sync loop (W1-W5, S4, M1) | ✅ done |
+| L3 consumption & diagnosis (W6, S3, S6, W8, W9) | ✅ done |
+| L4a templates, diff, edit, examples (W7, W10, W11, D3) | ✅ done |
+| L4b file groups (W12a-d) | ✅ done |
+| L5 keys & machines (K2, K3, K5, K6, M2) | ✅ done |
+| L6 management TUI (G1-G9) | ✅ done |
+| L7 lifecycle (M5, M4, D7, D5, release workflow) | ✅ done |
+| L8 cutover of the real secrets repo | ⏸ awaiting Kenny's explicit go, step by step |
+| L9 documentation | ✅ done |
+
+55 automated tests green; clippy clean; CI enforcing.
+
 ## Standing rules (from L0, forever)
 1. Red CI blocks merge — no exceptions.
 2. Every live bug becomes a mocked test before the fix.
