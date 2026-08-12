@@ -28,8 +28,7 @@ pub const SIG_ASSET: &str = "SHA256SUMS.minisig";
 /// line of your `minisign.pub` (the base64 blob, no comment line). Until a
 /// real key is set, `latch update` fails closed (refuses every release) —
 /// which is safe. See docs/OPERATIONS_RUNBOOK.md R11.
-pub const RELEASE_PUBKEY: &str =
-    "RWQ00000000000000000000000000000000000000000000000000000000000000000000000000000";
+pub const RELEASE_PUBKEY: &str = "RWQWCzzUBquIHGkS3YERMkuqEm4C3vBArnlb9rySbr8z5ytgVYuji3bS";
 
 /// The asset for the platform this binary was built for (M5 per-OS).
 pub const fn asset_for_this_os() -> &'static str {
