@@ -1,8 +1,8 @@
 # Feature registry — latch v2 redesign
 
 Permanent IDs, used in commits and docs forever. Ratings by Kenny,
-2026-08-11 (interactive rounds): **Must** (onmisbaar) · **Should** (gewenst)
-· **Could** (later) · **Won't** (niet doen). Each feature carries test
+2026-08-11 (interactive rounds): **Must** · **Should** · **Could** ·
+**Won't** (rated via the fixed form scale). Each feature carries test
 scenarios; design notes record constraints agreed during rating.
 
 ## K · Keys & crypto
