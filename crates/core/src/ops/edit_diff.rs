@@ -125,22 +125,31 @@ pub fn edit(
     env: &str,
     file: Option<&str>,
 ) -> Result<EditOutcome, LatchError> {
-    let _lock = lock::acquire(p, 10, || {})?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
-    repo.ensure()?;
     let store = CredStore::new(p);
-    let key = keys::for_env_or_create(&store, &proj.name, env)?;
 
     let rel = file.unwrap_or(".env").to_string();
     let flat = discovery::flatten(&rel)?;
     let enc_rel = format!("{}/{}/{}.enc", proj.name, env, flat);
-    let current = match repo.read(&enc_rel)? {
-        Some(sealed) => envelope::open(&key.key, &key.id, &sealed, &rel)?,
-        None => p
-            .files
-            .read(&format!("{}/{}", proj.dir, rel))?
-            .unwrap_or_default(),
+
+    // Read the current content under the lock, then RELEASE it before the
+    // editor runs (B3: holding the mutation lock across an interactive
+    // $EDITOR session is exactly what let its 15-minute stale-break hand
+    // the lock to a concurrent process). The editor sees a tmpfs copy;
+    // the write below re-acquires the lock.
+    let (key, current) = {
+        let _lock = lock::acquire(p, 10, || {})?;
+        repo.ensure()?;
+        let key = keys::for_env_or_create(&store, &proj.name, env)?;
+        let current = match repo.read(&enc_rel)? {
+            Some(sealed) => envelope::open(&key.key, &key.id, &sealed, &rel)?,
+            None => p
+                .files
+                .read(&format!("{}/{}", proj.dir, rel))?
+                .unwrap_or_default(),
+        };
+        (key, current)
     };
 
     let Some(runtime) = &p.runtime_dir else {
@@ -170,6 +179,11 @@ pub fn edit(
             file: rel,
         });
     }
+
+    // Re-acquire the lock only for the quick encrypt-and-write. Re-open
+    // the repo so we commit against fresh state.
+    let _lock = lock::acquire(p, 10, || {})?;
+    repo.ensure()?;
     let sealed = envelope::seal(&key.key, &key.id, &edited)?;
     repo.write(&enc_rel, &sealed)?;
     p.files

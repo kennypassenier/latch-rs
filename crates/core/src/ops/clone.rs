@@ -32,6 +32,35 @@ fn transport_key(shared: &[u8], offer_pub: &[u8; 32], source_pub: &[u8; 32]) -> 
     h.finalize().into()
 }
 
+/// Constant-time byte comparison (D5): the verify code is low-entropy,
+/// so its check must not leak position information through timing.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Reject an ssh target that could be read as an option (D5): ssh has no
+/// `--` end-of-options, so a target like `-oProxyCommand=…` becomes a
+/// command-executing flag.
+fn validate_ssh_target(target: &str) -> Result<(), LatchError> {
+    if target.is_empty()
+        || target.starts_with('-')
+        || target.contains(['\n', '\r', '\0', ' '])
+    {
+        return Err(LatchError::other(
+            format!("refusing ssh target '{}'", target),
+            "use a plain user@host (no leading '-', no spaces) — ssh treats a leading dash as an option",
+        ));
+    }
+    Ok(())
+}
+
 /// The 6-digit verify code both sides display — derived from the two
 /// PUBLIC keys, so a man-in-the-middle changes it on one side.
 pub fn verify_code(offer_pub: &[u8; 32], source_pub: &[u8; 32]) -> String {
@@ -286,15 +315,23 @@ pub fn apply(
         detail: "body is not valid hex".into(),
     })?;
 
-    // MITM gate: the code binds BOTH public keys.
+    // MITM gate: the code binds BOTH public keys. D5: a wrong code
+    // CONSUMES the offer (single-use, as promised) so the low-entropy
+    // 6-digit code cannot be brute-forced against a pending offer inside
+    // the 15-minute window; the comparison is constant-time.
     let expected = verify_code(offer_pub.as_bytes(), &source_pub_bytes);
+    let refuse_and_burn = |p: &Platform, what: &'static str, remedy: &'static str| {
+        let _ = p.files.remove(&offer_path);
+        Err(LatchError::other(what, remedy))
+    };
     match code {
         Some(given) => {
-            if given.trim() != expected {
-                return Err(LatchError::other(
-                    "verify code mismatch — refusing the payload",
-                    "read the 6-digit code from the machine that created the payload and pass it via --code",
-                ));
+            if !constant_time_eq(given.trim().as_bytes(), expected.as_bytes()) {
+                return refuse_and_burn(
+                    p,
+                    "verify code mismatch — offer discarded",
+                    "start over: 'latch clone offer' here, then create a fresh payload (a wrong code burns the offer, by design)",
+                );
             }
         }
         None => {
@@ -303,10 +340,11 @@ pub fn apply(
                 expected
             ))?;
             if !ok {
-                return Err(LatchError::other(
-                    "clone refused — codes do not match",
-                    "a mismatch means the payload is not the one your source created; re-run the clone",
-                ));
+                return refuse_and_burn(
+                    p,
+                    "clone refused — offer discarded",
+                    "start over: 'latch clone offer' here, then create a fresh payload",
+                );
             }
         }
     }
@@ -369,6 +407,7 @@ pub fn clone_to(
     project: Option<&str>,
     env: Option<&str>,
 ) -> Result<CloneToOutcome, LatchError> {
+    validate_ssh_target(target)?;
     let out = p.proc.run(
         "ssh",
         &[target, "latch", "clone", "offer", "--machine"],

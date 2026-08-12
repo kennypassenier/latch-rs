@@ -235,14 +235,6 @@ fn m2_clone_scoped_codes_and_expiry() {
         "payload is ciphertext, no structure visible"
     );
 
-    // Wrong code: refused, offer stays pending.
-    let err = clone::apply(&pt, &created.payload, Some("000000")).unwrap_err();
-    let is_lucky = created.code == "000000";
-    assert!(
-        is_lucky || format!("{err}").contains("verify code"),
-        "{err}"
-    );
-
     // Right code: applied; repo configured; alpha pulls, beta has no key.
     let applied = clone::apply(&pt, &created.payload, Some(&created.code)).unwrap();
     assert!(applied.applied.contains(&"key:alpha".to_string()));
@@ -257,6 +249,8 @@ fn m2_clone_scoped_codes_and_expiry() {
     // The offer is single-use: a second apply needs a fresh offer.
     let err = clone::apply(&pt, &created.payload, Some(&created.code)).unwrap_err();
     assert!(format!("{err}").contains("no pending"), "{err}");
+    // (The wrong-code-burns-the-offer path is covered by
+    // l8_hardening_tests::d5_wrong_code_consumes_the_offer.)
 
     // Expired offer: a fresh offer + a clock far in the future.
     let off2 = clone::offer(&pt).unwrap();

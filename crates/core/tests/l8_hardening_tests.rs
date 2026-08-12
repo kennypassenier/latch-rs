@@ -523,3 +523,121 @@ fn b4_cross_machine_group_divergence_is_caught() {
     assert!(msg.contains("diverged between machines"), "{msg}");
     assert!(msg.contains("group resolve"), "remedy names the fix: {msg}");
 }
+
+// ── Block 4 · lock & clone ──────────────────────────────────────────────
+
+use latch_core::lock;
+use latch_core::platform::mock::{MockFiles, MockProc};
+
+// B3 · a guard whose lock was stale-broken and re-taken by another
+// process must NOT delete the new owner's lock on drop.
+#[test]
+fn b3_lock_guard_only_removes_its_own() {
+    let files = MockFiles::default();
+    let env = MockEnv::default();
+    let keyring = MockKeyring::headless();
+    let prompt = MockPrompt::non_interactive();
+    let clock = MockClock::default();
+    let proc = MockProc::default();
+    let plat = Platform {
+        env: &env,
+        files: &files,
+        keyring: &keyring,
+        prompt: &prompt,
+        clock: &clock,
+        proc: &proc,
+        latch_home: "/home/t/.latch".into(),
+        runtime_dir: None,
+    };
+    let lock_path = "/home/t/.latch/lock";
+    {
+        let _g = lock::acquire(&plat, 0, || {}).unwrap();
+        // Someone else stale-breaks and re-creates the lock with THEIR
+        // token (simulating a second process after the 15-min window).
+        files.seed(lock_path, b"other-process-token");
+        // Our guard drops here: it must see the token changed and leave
+        // the other process's lock alone.
+    }
+    assert_eq!(
+        plat.files.read(lock_path).unwrap().as_deref(),
+        Some(b"other-process-token".as_ref()),
+        "drop deleted another owner's lock (B3)"
+    );
+}
+
+#[test]
+fn b3_normal_lock_lifecycle_removes_own() {
+    let files = MockFiles::default();
+    let env = MockEnv::default();
+    let keyring = MockKeyring::headless();
+    let prompt = MockPrompt::non_interactive();
+    let clock = MockClock::default();
+    let proc = MockProc::default();
+    let plat = Platform {
+        env: &env,
+        files: &files,
+        keyring: &keyring,
+        prompt: &prompt,
+        clock: &clock,
+        proc: &proc,
+        latch_home: "/home/t/.latch".into(),
+        runtime_dir: None,
+    };
+    let lock_path = "/home/t/.latch/lock";
+    {
+        let _g = lock::acquire(&plat, 0, || {}).unwrap();
+        assert!(plat.files.read(lock_path).unwrap().is_some());
+    }
+    assert!(
+        plat.files.read(lock_path).unwrap().is_none(),
+        "our own lock is released on drop"
+    );
+}
+
+// D5 · a wrong verify code burns the offer (single use) so it cannot be
+// brute-forced within the window.
+#[test]
+fn d5_wrong_code_consumes_the_offer() {
+    use latch_core::ops::clone;
+    let (tmp, origin, _bare) = scratch();
+    // Source machine with something to clone.
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    let proj = tmp.path().join("work/app");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join(".env"), "X=1\n").unwrap();
+    init::run(&pa, &proj.display().to_string(), None).unwrap();
+    sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+
+    // Target makes an offer; source creates a payload.
+    let t = Machine::new(tmp.path(), "home-t", &origin);
+    *t.clock.now.borrow_mut() = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let pt = t.platform();
+    let off = clone::offer(&pt).unwrap();
+    let created = clone::create(&pa, &off.offer, None, None).unwrap();
+
+    // A wrong code is refused AND the offer is gone, so a second attempt
+    // (even with the right code) has nothing to apply against.
+    let wrong = if created.code == "000000" { "111111" } else { "000000" };
+    let err = clone::apply(&pt, &created.payload, Some(wrong)).unwrap_err();
+    assert!(format!("{err}").contains("offer discarded"), "{err}");
+    let err2 = clone::apply(&pt, &created.payload, Some(&created.code)).unwrap_err();
+    assert!(format!("{err2}").contains("no pending"), "offer must be burned: {err2}");
+}
+
+// D5 · ssh targets that look like options are refused.
+#[test]
+fn d5_ssh_target_option_injection_refused() {
+    use latch_core::ops::clone;
+    let (tmp, origin, _bare) = scratch();
+    let a = Machine::new(tmp.path(), "home-a", &origin);
+    let pa = a.platform();
+    for evil in ["-oProxyCommand=sh -c evil", "-Fnasty", " leading-space"] {
+        let err = clone::clone_to(&pa, evil, None, None).unwrap_err();
+        assert!(format!("{err}").contains("ssh target"), "{evil}: {err}");
+    }
+}
