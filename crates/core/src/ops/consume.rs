@@ -49,6 +49,7 @@ pub fn run(
     program: &str,
     args: &[&str],
 ) -> Result<RunOutcome, LatchError> {
+    crate::discovery::validate_env(env_name)?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
@@ -71,7 +72,9 @@ pub fn run(
         let Some(_flat) = enc_name.strip_suffix(".enc") else {
             continue;
         };
-        let sealed = repo.read(&format!("{}/{}", prefix, enc_name))?.unwrap();
+        let Some(sealed) = repo.read(&format!("{}/{}", prefix, enc_name))? else {
+            continue; // removed underneath us (concurrent reset) — skip
+        };
         let plain = envelope::open(&key.key, &key.id, &sealed, &enc_name)?;
         // W12: group members resolve to the group's stored content.
         let plain = match crate::groups::parse_member(&plain) {
@@ -197,7 +200,9 @@ pub fn verify(p: &Platform, project: Option<&str>) -> Result<VerifyOutcome, Latc
                 continue;
             }
         }
-        let sealed = repo.read(&rel)?.unwrap();
+        let Some(sealed) = repo.read(&rel)? else {
+            continue; // removed between list and read — skip
+        };
         let state = match envelope::peek_key_id(&sealed, &rel) {
             Err(LatchError::Format { detail, .. }) => VerifyState::BadFormat(detail),
             Err(_) => VerifyState::BadFormat("unreadable header".into()),

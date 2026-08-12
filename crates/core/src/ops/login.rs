@@ -28,12 +28,7 @@ pub fn run(
             .prompt
             .line("secrets repository (owner/name, e.g. kennypassenier/secrets)")?,
     };
-    if !repo.contains('/') || repo.split('/').count() != 2 {
-        return Err(LatchError::other(
-            format!("'{}' is not an owner/name repository", repo),
-            "use the GitHub owner/name form, e.g. kennypassenier/secrets",
-        ));
-    }
+    crate::config::validate_repo(&repo)?;
 
     let pat = match pat_arg.or_else(|| p.env.var("LATCH_PAT")) {
         Some(t) => t,

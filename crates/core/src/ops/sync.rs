@@ -65,6 +65,7 @@ pub struct CommitOutcome {
 /// Encrypt the project's env files into the clone (no network). The file
 /// list is returned so the shell can SHOW it (D1: no surprise pickups).
 pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, LatchError> {
+    discovery::validate_env(env)?;
     let _lock = lock::acquire(p, 10, || {})?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
@@ -131,6 +132,7 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
 // ── W3 push ─────────────────────────────────────────────────────────────
 
 pub fn push(p: &Platform, cwd: &str, env: &str, force: bool) -> Result<PushOutcome, LatchError> {
+    discovery::validate_env(env)?;
     let _lock = lock::acquire(p, 10, || {})?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
@@ -158,6 +160,7 @@ pub fn pull(
     offline: bool,
     overwrite: bool,
 ) -> Result<PullOutcome, LatchError> {
+    discovery::validate_env(env)?;
     let _lock = lock::acquire(p, 10, || {})?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
@@ -174,23 +177,34 @@ pub fn pull(
         })?;
 
     let prefix = format!("{}/{}", proj.name, env);
-    // Phase 1: decrypt everything into memory.
+    // Phase 1: decrypt everything into memory. Baseline notes are held
+    // here and only committed in phase 3 — an abort before the write
+    // must not leave a group fingerprint claiming content the local file
+    // never received (D1c).
     let mut incoming: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut baseline_notes: Vec<(String, Vec<u8>, String)> = Vec::new();
     for enc_name in repo.list(&prefix)? {
         let Some(flat) = enc_name.strip_suffix(".enc") else {
             continue;
         };
-        let rel = discovery::unflatten(flat);
-        let sealed = repo
-            .read(&format!("{}/{}", prefix, enc_name))?
-            .expect("listed file readable");
+        // S1: refuse a repo entry whose name escapes the project dir.
+        let rel = discovery::unflatten_checked(flat)?;
+        // D6: a file removed between list and read (concurrent reset) is
+        // a skip, never a panic.
+        let Some(sealed) = repo.read(&format!("{}/{}", prefix, enc_name))? else {
+            continue;
+        };
         let plain = envelope::open(&key.key, &key.id, &sealed, &rel)?;
         // W12: a stub decrypts to its pragma line; the real content lives
         // once in _groups/<env>/<name>.enc under the group key.
         let plain = match groups::parse_member(&plain) {
             Some((name, _)) => {
                 let body = groups::group_body(p, &repo, env, &name)?;
-                groups::note_baseline(p, env, &name, &body, &format!("{}/{}", proj.name, rel))?;
+                baseline_notes.push((
+                    name.clone(),
+                    body.clone(),
+                    format!("{}/{}", proj.name, rel),
+                ));
                 groups::member_file(&name, &body)
             }
             None => plain,
@@ -217,7 +231,8 @@ pub fn pull(
         ));
     }
 
-    // Phase 3: write.
+    // Phase 3: write. Only now that content is safely on disk do the
+    // group baselines advance (D1c).
     let mut written = Vec::new();
     let mut unchanged = Vec::new();
     for (rel, plain) in incoming {
@@ -229,6 +244,9 @@ pub fn pull(
                 written.push(rel);
             }
         }
+    }
+    for (name, body, member_id) in baseline_notes {
+        groups::note_baseline(p, env, &name, &body, &member_id)?;
     }
 
     Ok(PullOutcome {
@@ -254,6 +272,7 @@ pub struct StatusOutcome {
 }
 
 pub fn status(p: &Platform, cwd: &str, env: &str) -> Result<StatusOutcome, LatchError> {
+    discovery::validate_env(env)?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;

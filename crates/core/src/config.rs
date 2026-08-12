@@ -61,6 +61,14 @@ impl Config {
                 ));
             }
         }
+        // S2: the repo string reaches `git clone` as a URL. Backups and
+        // clone payloads set it WITHOUT going through login's validation,
+        // so guard it here — the last gate before it hits disk and, next
+        // command, git's argv. git's ext::/fd:: transports execute
+        // commands, so a scheme other than https/file is a code-exec risk.
+        if let Some(repo) = &self.repo {
+            validate_repo(repo)?;
+        }
         let text = toml::to_string_pretty(self).map_err(|e| LatchError::Format {
             context: CONFIG_FILE.into(),
             detail: format!("encode: {}", e),
@@ -73,4 +81,31 @@ impl Config {
             .iter()
             .find(|pr| dir == pr.dir || dir.starts_with(&format!("{}/", pr.dir)))
     }
+}
+
+/// S2: accept only repo strings that cannot turn `git clone` into command
+/// execution. Either the plain `owner/name` form (login expands it to an
+/// https URL), or an explicit `https://` / `file://` URL — never git's
+/// `ext::`/`fd::`/`ssh://`-with-options transports.
+pub fn validate_repo(repo: &str) -> Result<(), LatchError> {
+    let bad = |detail: &str| {
+        Err(LatchError::other(
+            format!("refusing repo '{}': {}", repo, detail),
+            "use 'owner/name' or an https:// / file:// URL — other git transports can execute commands",
+        ))
+    };
+    if repo.is_empty() || repo.contains(['\n', '\r', '\0']) || repo.starts_with('-') {
+        return bad("empty, control chars, or leading dash");
+    }
+    if repo.contains("://") {
+        if !(repo.starts_with("https://") || repo.starts_with("file://")) {
+            return bad("only https:// and file:// URLs are allowed");
+        }
+        return Ok(());
+    }
+    // owner/name: exactly one slash, no scheme-ish colon.
+    if repo.split('/').count() != 2 || repo.contains(':') || repo.split('/').any(|p| p.is_empty()) {
+        return bad("not a valid owner/name");
+    }
+    Ok(())
 }
