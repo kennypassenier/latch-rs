@@ -18,6 +18,10 @@ pub struct Config {
     pub session_ttl: Option<u64>,
     #[serde(default)]
     pub projects: Vec<Project>,
+    /// M4: where 'latch update' maintains the binary. None = alongside
+    /// the currently running executable.
+    #[serde(default)]
+    pub install_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -131,6 +131,18 @@ enum Command {
     },
     /// Open the management TUI (G1).
     Ui,
+    /// Manage project↔directory links on this machine (D5).
+    Project {
+        #[command(subcommand)]
+        action: ProjectAction,
+    },
+    /// Where latch is installed and whether it is on PATH (M4).
+    Path,
+    /// Self-update from GitHub Releases — checksum-verified, previous
+    /// binary kept, new binary proven to run before replacing (M5).
+    Update,
+    /// Print shell completions (D7): bash, zsh or fish.
+    Completions { shell: clap_complete::Shell },
     /// M2 machine clone: move credentials to another machine, E2E-encrypted.
     Clone {
         /// ssh target (user@host) — runs the whole dance in one command.
@@ -145,6 +157,20 @@ enum Command {
         #[command(subcommand)]
         action: Option<CloneAction>,
     },
+}
+
+#[derive(clap::Subcommand)]
+enum ProjectAction {
+    /// Show every linked project.
+    List,
+    /// Link an EXISTING project to a directory (default: here).
+    Bind {
+        name: String,
+        #[arg(long)]
+        dir: Option<String>,
+    },
+    /// Forget the link on this machine (keys and repo content stay).
+    Unbind { name: String },
 }
 
 #[derive(clap::Subcommand)]
@@ -459,6 +485,59 @@ fn main() {
             }
         },
         Command::Ui => latch_ui::run(),
+        Command::Project { action } => match action {
+            ProjectAction::List => latch_core::ops::project::list(&platform).map(|projects| {
+                if projects.is_empty() {
+                    println!("no projects linked on this machine :: latch init links one");
+                }
+                for pr in projects {
+                    println!("{}  {}", pr.name, pr.dir);
+                }
+            }),
+            ProjectAction::Bind { name, dir } => {
+                let dir = dir.unwrap_or_else(|| cwd.clone());
+                latch_core::ops::project::bind(&platform, &name, &dir)
+                    .map(|_| println!("✓ {} -> {}", name, dir))
+            }
+            ProjectAction::Unbind { name } => latch_core::ops::project::unbind(&platform, &name)
+                .map(|_| println!("✓ {} unlinked (keys and repo content stay)", name)),
+        },
+        Command::Path => {
+            let exe = std::env::current_exe()
+                .map(|e| e.display().to_string())
+                .unwrap_or_else(|_| "latch".into());
+            latch_core::ops::project::path_report(&platform, &exe).map(|r| {
+                println!("install path  {}", r.install_path);
+                if r.on_path {
+                    println!("on $PATH      yes");
+                } else {
+                    println!("on $PATH      NO :: {}", r.remedy);
+                }
+            })
+        }
+        Command::Update => {
+            let exe = std::env::current_exe()
+                .map(|e| e.display().to_string())
+                .unwrap_or_else(|_| "latch".into());
+            let exe = latch_core::ops::project::install_path(&platform, &exe)
+                .unwrap_or_else(|_| exe.clone());
+            latch_core::ops::update::run(&platform, env!("CARGO_PKG_VERSION"), &exe).map(|out| {
+                match out {
+                    latch_core::ops::update::UpdateOutcome::UpToDate { version } => {
+                        println!("✓ already current ({})", version);
+                    }
+                    latch_core::ops::update::UpdateOutcome::Updated { from, to, previous } => {
+                        println!("✓ updated {} -> {}", from, to);
+                        println!("  previous binary kept at {}", previous);
+                    }
+                }
+            })
+        }
+        Command::Completions { shell } => {
+            use clap::CommandFactory;
+            clap_complete::generate(shell, &mut Cli::command(), "latch", &mut std::io::stdout());
+            Ok(())
+        }
         Command::Key { action } => match action {
             KeyAction::Show { env, reveal } => {
                 latch_core::ops::keyops::show(&platform, &cwd, env.as_deref(), reveal).map(|k| {

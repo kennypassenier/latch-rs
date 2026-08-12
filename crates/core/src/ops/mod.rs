@@ -6,4 +6,6 @@ pub mod edit_diff;
 pub mod init;
 pub mod keyops;
 pub mod login;
+pub mod project;
 pub mod sync;
+pub mod update;

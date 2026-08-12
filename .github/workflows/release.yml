@@ -1,0 +1,28 @@
+# AR7 release standard: a tag push builds the v2 binary, stamps a
+# checksum manifest, and publishes both — the M5 self-updater consumes
+# exactly these asset names.
+name: release
+on:
+  push:
+    tags: ["v2*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release -p latch-cli
+      - name: Stage assets
+        run: |
+          mkdir -p dist
+          cp target/release/latch dist/latch-x86_64-unknown-linux-gnu
+          cd dist && sha256sum latch-x86_64-unknown-linux-gnu > SHA256SUMS
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/latch-x86_64-unknown-linux-gnu
+            dist/SHA256SUMS
