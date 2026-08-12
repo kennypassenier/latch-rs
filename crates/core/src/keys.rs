@@ -75,7 +75,11 @@ pub fn for_env_or_create(
 
 /// Read the immediately-previous key generation kept during a rotation
 /// (B1). Present only while a rotation is in flight or was interrupted.
-pub fn prev(store: &CredStore, project: &str, env: Option<&str>) -> Result<Option<ProjectKey>, LatchError> {
+pub fn prev(
+    store: &CredStore,
+    project: &str,
+    env: Option<&str>,
+) -> Result<Option<ProjectKey>, LatchError> {
     let label = label_for(project, env);
     let Some((raw, _)) = store.get(&format!("key:{}#prev", label))? else {
         return Ok(None);

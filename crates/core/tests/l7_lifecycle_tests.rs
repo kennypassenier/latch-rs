@@ -43,14 +43,27 @@ impl UpdateRig {
             runtime_dir: None,
         }
     }
-    /// Script a full fake release: metadata, sums, binary, probe.
-    fn script_release(&self, tag: &str, binary: &[u8], sum_hex: &str, probe: (i32, &str)) {
+    /// Script a full fake release: metadata, signed sums, binary, probe.
+    /// `sig` is the exact SHA256SUMS.minisig content for the sums string
+    /// (the sums are `<sum_hex>  <asset>\n`). The ".minisig" response is
+    /// registered FIRST so the substring matcher doesn't hand a
+    /// SHA256SUMS.minisig request the plain sums.
+    fn script_release(
+        &self,
+        tag: &str,
+        binary: &[u8],
+        sum_hex: &str,
+        sig: &str,
+        probe: (i32, &str),
+    ) {
         self.proc.respond(
             "releases/latest",
             0,
             format!(r#"{{"tag_name": "{}", "assets": []}}"#, tag).as_bytes(),
             b"",
         );
+        self.proc
+            .respond("SHA256SUMS.minisig", 0, sig.as_bytes(), b"");
         self.proc.respond(
             "SHA256SUMS",
             0,
@@ -59,11 +72,19 @@ impl UpdateRig {
         );
         self.proc
             .respond("latch-x86_64-unknown-linux-gnu", 0, binary, b"");
-        self.proc.respond("chmod", 0, b"", b"");
         self.proc
             .respond("--version", probe.0, probe.1.as_bytes(), b"");
     }
 }
+
+// D4 test vector: a throwaway minisign key (generated with rsign; NOT the
+// production key) and signatures over the exact SHA256SUMS strings each
+// test uses. This exercises the signature gate end-to-end without the
+// real signing key.
+const TEST_PUBKEY: &str = "RWS0gFj3LpbipVHPdSnQfFp0NI/kv/0CoaHLd765/TH6TQS8sefm9GEZ";
+const SIG_NEW: &str = "untrusted comment: signature from rsign secret key\nRUS0gFj3Lpbipf6JkvgitGKJpAQOJki1X9iBX7PSia9ZNTCP9zD4urKYS8Frx87Sha1R5d7p0X/3z1nnYQh42V+nliJIqGlFsAA=\ntrusted comment: timestamp:1786509498\tfile:S_NEW-BINARY-9.9.9\tprehashed\n4oHUaagnAgvwioY/2x2F3shZqVq3DYshaHnQAwSMjCiPzJe9ezy54EFuo6dlzfDrnQIHkuQj7OIAe4LdR6I5BQ==\n";
+const SIG_REALRELEASE: &str = "untrusted comment: signature from rsign secret key\nRUS0gFj3LpbipQxW8n0S7YEcHVlKSm/req5KMZjtOvY1bE6kt7BeGRfgVQci7+Sr8kqXtxWcp07b8D6na/w7Afh0F/5cNN/mEQs=\ntrusted comment: timestamp:1786509498\tfile:S_the-real-release\tprehashed\nxg7Lri5HJvTzd1Yit8MSS9coZiy2G9RjjtmjHX0AUIk2JM2WN/7TRvrflEgZ33HupCZfyN/5q/gGi+NmFhAYDw==\n";
+const SIG_BROKEN: &str = "untrusted comment: signature from rsign secret key\nRUS0gFj3LpbipTVZVCLzL4AUWnPIp5pe3t++XpC5Uwa7fmRHsnrdH/xrptMEErA3nBxg5UlDA2Y+hF8yFSJ/A5aZKVmZ1GrlcwE=\ntrusted comment: timestamp:1786509499\tfile:S_BROKEN-BINARY\tprehashed\n2bBklNHOsXKPrGC0qusMzXHpsKNJBSsZ21coHiJ1v7BMNBe4u3IJ3+nmhHLVZd8QNPQOQW+730l3PKI8zlspDw==\n";
 
 fn sha256_hex(data: &[u8]) -> String {
     use sha2::Digest;
@@ -76,10 +97,16 @@ fn update_happy_path_keeps_previous_binary() {
     let old = b"OLD-BINARY".to_vec();
     let new = b"NEW-BINARY-9.9.9".to_vec();
     rig.files.seed("/usr/local/bin/latch", &old);
-    rig.script_release("v9.9.9", &new, &sha256_hex(&new), (0, "latch 9.9.9"));
+    rig.script_release(
+        "v9.9.9",
+        &new,
+        &sha256_hex(&new),
+        SIG_NEW,
+        (0, "latch 9.9.9"),
+    );
 
     let p = rig.platform();
-    let out = update::run(&p, "2.0.0", "/usr/local/bin/latch").unwrap();
+    let out = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap();
     assert_eq!(
         out,
         update::UpdateOutcome::Updated {
@@ -110,10 +137,17 @@ fn update_aborts_on_checksum_mismatch() {
     let new = b"TAMPERED".to_vec();
     rig.files.seed("/usr/local/bin/latch", &old);
     // Manifest says a DIFFERENT sum than the download hashes to.
-    rig.script_release("v9.9.9", &new, &sha256_hex(b"the-real-release"), (0, "x"));
+    rig.script_release(
+        "v9.9.9",
+        &new,
+        &sha256_hex(b"the-real-release"),
+        SIG_REALRELEASE,
+        (0, "x"),
+    );
 
     let p = rig.platform();
-    let err = update::run(&p, "2.0.0", "/usr/local/bin/latch").unwrap_err();
+    let err =
+        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap_err();
     assert!(format!("{err}").contains("checksum"), "{err}");
     assert_eq!(
         p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
@@ -130,10 +164,11 @@ fn update_aborts_when_new_binary_does_not_run() {
     let new = b"BROKEN-BINARY".to_vec();
     rig.files.seed("/usr/local/bin/latch", &old);
     // Correct checksum but the probe fails to execute.
-    rig.script_release("v9.9.9", &new, &sha256_hex(&new), (127, ""));
+    rig.script_release("v9.9.9", &new, &sha256_hex(&new), SIG_BROKEN, (127, ""));
 
     let p = rig.platform();
-    let err = update::run(&p, "2.0.0", "/usr/local/bin/latch").unwrap_err();
+    let err =
+        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap_err();
     assert!(format!("{err}").contains("does not run"), "{err}");
     assert_eq!(
         p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
@@ -155,7 +190,7 @@ fn update_reports_up_to_date() {
     rig.proc
         .respond("releases/latest", 0, br#"{"tag_name": "v2.0.0"}"#, b"");
     let p = rig.platform();
-    let out = update::run(&p, "2.0.0", "/usr/local/bin/latch").unwrap();
+    let out = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap();
     assert_eq!(
         out,
         update::UpdateOutcome::UpToDate {
@@ -165,6 +200,77 @@ fn update_reports_up_to_date() {
     assert!(
         rig.proc.calls_containing("SHA256SUMS").is_empty(),
         "no downloads"
+    );
+}
+
+// D4 · a valid-format signature that does NOT match the sums is rejected
+// before any binary is trusted.
+#[test]
+fn d4_wrong_signature_is_refused() {
+    let rig = UpdateRig::new();
+    rig.files.seed("/usr/local/bin/latch", b"OLD");
+    // Sums for NEW-BINARY, but paired with the signature over a DIFFERENT
+    // sums string (SIG_BROKEN) → signature won't verify.
+    rig.script_release(
+        "v9.9.9",
+        b"NEW-BINARY-9.9.9",
+        &sha256_hex(b"NEW-BINARY-9.9.9"),
+        SIG_BROKEN,
+        (0, "latch 9.9.9"),
+    );
+    let p = rig.platform();
+    let err =
+        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap_err();
+    assert!(format!("{err}").contains("does NOT verify"), "{err}");
+    assert_eq!(
+        p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
+        b"OLD",
+        "nothing changed after a bad signature"
+    );
+}
+
+// D4 · a build whose RELEASE_PUBKEY is still the placeholder fails closed
+// (refuses every release) rather than trusting an unsigned manifest.
+#[test]
+fn d4_placeholder_key_fails_closed() {
+    let rig = UpdateRig::new();
+    rig.files.seed("/usr/local/bin/latch", b"OLD");
+    rig.script_release(
+        "v9.9.9",
+        b"NEW-BINARY-9.9.9",
+        &sha256_hex(b"NEW-BINARY-9.9.9"),
+        SIG_NEW,
+        (0, "latch 9.9.9"),
+    );
+    let p = rig.platform();
+    // The real entry point uses the baked-in (placeholder) key.
+    let err = update::run(&p, "2.0.0", "/usr/local/bin/latch").unwrap_err();
+    assert!(
+        format!("{err}").contains("no valid release-signing key")
+            || format!("{err}").contains("does NOT verify"),
+        "{err}"
+    );
+    assert_eq!(
+        p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
+        b"OLD"
+    );
+}
+
+// D4 · downgrade guard: a `latest` moved back to an older version does
+// not "update" us down.
+#[test]
+fn d4_downgrade_is_refused() {
+    let rig = UpdateRig::new();
+    rig.proc
+        .respond("releases/latest", 0, br#"{"tag_name": "v1.0.0"}"#, b"");
+    let p = rig.platform();
+    let out = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap();
+    assert_eq!(
+        out,
+        update::UpdateOutcome::UpToDate {
+            version: "2.0.0".into()
+        },
+        "an older latest tag must not downgrade us"
     );
 }
 

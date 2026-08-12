@@ -116,12 +116,20 @@ v2 crates with exactly that toolchain — a dependency bump that raises
 the bar turns red in CI instead of failing on an older machine later.
 Raising the MSRV is a deliberate commit, never a side effect.
 
-## AR17 · Platform scope: Linux only, officially
-The release ships one asset (x86_64 linux-gnu), W11 zero-disk editing
-requires a tmpfs runtime dir, and only Linux is tested. The code avoids
-gratuitous platform locks, but no macOS/Windows support is claimed
-anywhere. Revisit only with a real second platform and a machine to
-test it on.
+## AR17 · Platform scope: Linux AND Windows (amended 2026-08-12)
+Originally recorded as Linux-only; corrected the same day — Kenny runs
+both Garuda Linux and Windows 11, so both are first-class targets. The
+release ships two assets (x86_64 linux-gnu and x86_64-pc-windows-msvc);
+the self-updater (M5) picks the one for its own OS. Platform-specific
+code is `#[cfg]`-gated behind the platform traits: file modes are Unix
+0600/0700, on Windows privacy comes from the per-user profile directory's
+NTFS ACLs; core-dump hardening is Linux-only. Two features degrade on
+Windows by design: W11 zero-disk edit is UNAVAILABLE (no tmpfs; it
+refuses rather than weaken the never-touch-disk guarantee — WA), and the
+AR11 session cache is OFF (the Credential Manager covers key storage —
+WB). macOS is still not a target. Runtime verification on Windows is done
+on Kenny's machine (docs/WINDOWS_TEST_CHECKLIST.md); the CI build only
+proves it compiles for the Windows target.
 
 ## AR18 · Dependency policy: formally conservative
 ~13 direct dependencies in core, all established crates; network I/O
@@ -129,6 +137,22 @@ deliberately via the system git/curl binaries instead of an HTTP stack.
 Adding a NEW direct dependency to any v2 crate requires a mini-round
 with Kenny first (supply-chain surface is a decision, not a default).
 Routine version bumps of existing dependencies stay free.
+
+Direct deps added under an approved feature (recorded here for the paper
+trail): `zeroize` and `libc` (K1 memory hardening — both were already
+transitive via the crypto crates, so no new supply-chain surface);
+`minisign-verify` (D4 release-signature verification — small,
+purpose-built, verify-only).
+
+## AR20 · Self-update authenticity: minisign signature (D4)
+The checksum manifest (`SHA256SUMS`) must carry a valid minisign
+signature under a public key baked into the binary (`RELEASE_PUBKEY`)
+before ANY downloaded byte is trusted — a compromised GitHub account
+cannot forge it without the offline secret key. Signing happens LOCALLY
+(Kenny, `scripts/sign-release.*`), never in CI, so the secret key never
+touches GitHub. The updater also refuses to move to a version that is not
+strictly newer (downgrade guard), and fails CLOSED when no valid key is
+configured. See OPERATIONS_RUNBOOK R11.
 
 ## AR19 · License: AGPL-3.0-or-later confirmed
 Inherited from v1, now an explicit decision for v2. Anyone modifying

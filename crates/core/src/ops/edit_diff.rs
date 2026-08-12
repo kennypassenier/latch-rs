@@ -153,9 +153,18 @@ pub fn edit(
     };
 
     let Some(runtime) = &p.runtime_dir else {
+        // WA: no RAM-backed tmpfs, so zero-disk editing is impossible.
+        // On Windows this is the normal case (no tmpfs exists); latch
+        // edit is simply unavailable there rather than weakening its
+        // never-touch-disk guarantee.
+        let remedy = if cfg!(windows) {
+            "latch edit needs a RAM-backed filesystem, which Windows lacks — edit the file with your editor and run 'latch commit'"
+        } else {
+            "set XDG_RUNTIME_DIR (a systemd user session provides it) — latch edit refuses to put plaintext on a real disk"
+        };
         return Err(LatchError::other(
-            "no tmpfs runtime directory available for zero-disk editing",
-            "set XDG_RUNTIME_DIR (systemd session) — latch edit refuses to put plaintext on a real disk",
+            "zero-disk editing is unavailable here (no tmpfs runtime directory)",
+            remedy,
         ));
     };
     let tmp_path = format!("{}/edit-{}-{}", runtime, proj.name, flat);

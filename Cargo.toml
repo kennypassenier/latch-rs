@@ -24,6 +24,7 @@ clap = { version = "4", features = ["derive"] }
 ratatui = "0.29"
 zeroize = "1"
 libc = "0.2"
+minisign-verify = "0.2"
 
 [package]
 name = "latch-rs"

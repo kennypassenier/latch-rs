@@ -265,11 +265,7 @@ pub fn pull(
         let plain = match groups::parse_member(&plain) {
             Some((name, _)) => {
                 let body = groups::group_body(p, &repo, env, &name)?;
-                baseline_notes.push((
-                    name.clone(),
-                    body.clone(),
-                    format!("{}/{}", proj.name, rel),
-                ));
+                baseline_notes.push((name.clone(), body.clone(), format!("{}/{}", proj.name, rel)));
                 groups::member_file(&name, &body)
             }
             None => plain,

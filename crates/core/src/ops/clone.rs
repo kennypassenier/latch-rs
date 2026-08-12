@@ -49,10 +49,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 /// `--` end-of-options, so a target like `-oProxyCommand=…` becomes a
 /// command-executing flag.
 fn validate_ssh_target(target: &str) -> Result<(), LatchError> {
-    if target.is_empty()
-        || target.starts_with('-')
-        || target.contains(['\n', '\r', '\0', ' '])
-    {
+    if target.is_empty() || target.starts_with('-') || target.contains(['\n', '\r', '\0', ' ']) {
         return Err(LatchError::other(
             format!("refusing ssh target '{}'", target),
             "use a plain user@host (no leading '-', no spaces) — ssh treats a leading dash as an option",

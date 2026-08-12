@@ -174,11 +174,7 @@ impl<'a> Repo<'a> {
         // preservation beats freshness.
         let dirty = !self.git_in(&["status", "--porcelain"])?.stdout.is_empty();
         let ahead = {
-            let out = self.git_in(&[
-                "rev-list",
-                "--count",
-                &format!("origin/{}..HEAD", BRANCH),
-            ])?;
+            let out = self.git_in(&["rev-list", "--count", &format!("origin/{}..HEAD", BRANCH)])?;
             String::from_utf8_lossy(&out.stdout).trim() != "0"
         };
         if dirty || ahead {

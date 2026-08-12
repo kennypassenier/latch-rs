@@ -1,6 +1,9 @@
-# AR7 release standard: a tag push builds the v2 binary, stamps a
-# checksum manifest, and publishes both — the M5 self-updater consumes
-# exactly these asset names.
+# AR7 release standard: a tag push builds the v2 binary for Linux AND
+# Windows, stamps ONE checksum manifest covering both, and publishes them.
+# The M5 self-updater consumes exactly these asset names and picks the one
+# for its own OS. Signing (D4) is deliberately NOT done in CI — the secret
+# key never touches GitHub; Kenny signs SHA256SUMS locally after the build
+# (see scripts/sign-release.sh / .ps1) and uploads SHA256SUMS.minisig.
 name: release
 on:
   push:
@@ -8,21 +11,56 @@ on:
 permissions:
   contents: write
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: latch-x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: latch-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release -p latch-cli
-      - name: Stage assets
+        run: cargo build --release -p latch-cli --target ${{ matrix.target }}
+      - name: Stage asset (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir -p dist
-          cp target/release/latch dist/latch-x86_64-unknown-linux-gnu
-          cd dist && sha256sum latch-x86_64-unknown-linux-gnu > SHA256SUMS
-      - name: Publish
+          cp target/${{ matrix.target }}/release/latch dist/${{ matrix.asset }}
+      - name: Stage asset (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir dist
+          copy target\${{ matrix.target }}\release\latch.exe dist\${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+      - name: Assemble dist + checksum manifest
+        run: |
+          mkdir -p dist
+          find dl -type f -exec cp {} dist/ \;
+          cd dist && sha256sum latch-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish (binaries + sums; the .minisig is uploaded later by Kenny)
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/latch-x86_64-unknown-linux-gnu
+            dist/latch-x86_64-pc-windows-msvc.exe
             dist/SHA256SUMS

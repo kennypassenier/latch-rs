@@ -91,10 +91,24 @@ fn s1_pull_refuses_path_escaping_repo_entry() {
     std::fs::write(atk.join(evil_name), &good).unwrap();
     for args in [
         &["-C", atk.to_str().unwrap(), "add", "-A"][..],
-        &["-C", atk.to_str().unwrap(), "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "-m", "evil"][..],
+        &[
+            "-C",
+            atk.to_str().unwrap(),
+            "-c",
+            "user.email=a@b",
+            "-c",
+            "user.name=a",
+            "commit",
+            "-q",
+            "-m",
+            "evil",
+        ][..],
         &["-C", atk.to_str().unwrap(), "push", "-q"][..],
     ] {
-        std::process::Command::new("git").args(args).status().unwrap();
+        std::process::Command::new("git")
+            .args(args)
+            .status()
+            .unwrap();
     }
 
     // The victim pulls. It MUST refuse, and nothing may appear outside
@@ -209,7 +223,9 @@ fn b1_interrupted_rotation_recovers() {
     let (old, _new) = latch_core::keys::rotate(&store, "app", None).unwrap();
     assert_eq!(old.unwrap().id.generation, 1);
     assert!(
-        latch_core::keys::prev(&store, "app", None).unwrap().is_some(),
+        latch_core::keys::prev(&store, "app", None)
+            .unwrap()
+            .is_some(),
         "old key preserved under #prev — not destroyed (B1)"
     );
 
@@ -220,11 +236,15 @@ fn b1_interrupted_rotation_recovers() {
     assert!(!out.reencrypted.is_empty(), "resume re-encrypts the file");
     let ver2 = consume::verify(&pa, Some("app")).unwrap();
     assert!(
-        ver2.entries.iter().all(|(_, s)| matches!(s, consume::VerifyState::Ok)),
+        ver2.entries
+            .iter()
+            .all(|(_, s)| matches!(s, consume::VerifyState::Ok)),
         "everything opens after resume: {ver2:?}"
     );
     assert!(
-        latch_core::keys::prev(&store, "app", None).unwrap().is_none(),
+        latch_core::keys::prev(&store, "app", None)
+            .unwrap()
+            .is_none(),
         "#prev cleared once rotation completed"
     );
     let _ = ver;
@@ -232,7 +252,10 @@ fn b1_interrupted_rotation_recovers() {
     sync::push(&pa, &cwd, "dev", false).unwrap();
     std::fs::remove_file(proj.join(".env")).unwrap();
     sync::pull(&pa, &cwd, "dev", false, true).unwrap();
-    assert_eq!(std::fs::read_to_string(proj.join(".env")).unwrap(), "TOKEN=v1\n");
+    assert_eq!(
+        std::fs::read_to_string(proj.join(".env")).unwrap(),
+        "TOKEN=v1\n"
+    );
 }
 
 // D2c · a machine that rotated behind another's back is refused, not
@@ -421,7 +444,10 @@ fn d1a_pull_preserves_unpushed_commit() {
 
     // A pull now MUST report diverged and MUST NOT lose our commit.
     let out = sync::pull(&pa, &cwd, "dev", false, true).unwrap();
-    assert!(out.diverged, "pull must flag divergence, not claim fresh (D1b)");
+    assert!(
+        out.diverged,
+        "pull must flag divergence, not claim fresh (D1b)"
+    );
     // Our unpushed V=2 survives (force publishes it, keeping B's file).
     sync::push(&pa, &cwd, "dev", true).unwrap();
     let probe = tmp.path().join("probe");
@@ -430,7 +456,10 @@ fn d1a_pull_preserves_unpushed_commit() {
         .arg(&probe)
         .status()
         .unwrap();
-    assert!(probe.join("app/dev/api__.env.enc").exists(), "B's file kept");
+    assert!(
+        probe.join("app/dev/api__.env.enc").exists(),
+        "B's file kept"
+    );
 }
 
 // D1d · commit in an empty checkout refuses the mass deletion.
@@ -622,11 +651,18 @@ fn d5_wrong_code_consumes_the_offer() {
 
     // A wrong code is refused AND the offer is gone, so a second attempt
     // (even with the right code) has nothing to apply against.
-    let wrong = if created.code == "000000" { "111111" } else { "000000" };
+    let wrong = if created.code == "000000" {
+        "111111"
+    } else {
+        "000000"
+    };
     let err = clone::apply(&pt, &created.payload, Some(wrong)).unwrap_err();
     assert!(format!("{err}").contains("offer discarded"), "{err}");
     let err2 = clone::apply(&pt, &created.payload, Some(&created.code)).unwrap_err();
-    assert!(format!("{err2}").contains("no pending"), "offer must be burned: {err2}");
+    assert!(
+        format!("{err2}").contains("no pending"),
+        "offer must be burned: {err2}"
+    );
 }
 
 // D5 · ssh targets that look like options are refused.
@@ -658,7 +694,9 @@ fn k1_session_ttl_config_is_honored() {
     // then reading it back still works (env passphrase bypasses cache),
     // and no session key is cached on disk.
     let store = CredStore::new(&pa);
-    store.set("key:x", b"value-000000000000000000000000000000").unwrap();
+    store
+        .set("key:x", b"value-000000000000000000000000000000")
+        .unwrap();
     assert!(store.get("key:x").unwrap().is_some());
     // With a real runtime dir the session key would be absent under TTL 0;
     // here runtime_dir is None so caching is off anyway — the assertion is
@@ -735,5 +773,8 @@ fn k1_update_places_executable_atomically() {
     RealFiles.write_executable(&path, b"#!/bin/true\n").unwrap();
     use std::os::unix::fs::PermissionsExt;
     let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o755, "binary must be executable the moment it exists");
+    assert_eq!(
+        mode, 0o755,
+        "binary must be executable the moment it exists"
+    );
 }

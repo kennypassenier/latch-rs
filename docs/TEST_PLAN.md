@@ -58,7 +58,7 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
   foreign keys behind, wrong verify code refused, offers single-use and
   expiring, ssh wrapper transcript replayed against a real target.
 
-### `l7_lifecycle_tests.rs` (6) — lifecycle
+### `l7_lifecycle_tests.rs` (9) — lifecycle
 - M5 state machine on scripted releases: happy path keeps `.prev`,
   checksum mismatch aborts untouched, non-executing binary aborts
   untouched, up-to-date short-circuits with zero downloads; M4 path

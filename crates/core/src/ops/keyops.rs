@@ -231,11 +231,7 @@ pub fn rotate(p: &Platform, cwd: &str, env: Option<&str>) -> Result<RotateOutcom
 /// D2d: rotate a GROUP key (K3 for groups). Re-seals the group's stored
 /// content under a fresh key generation; the cross-project blast-radius
 /// keys were previously the only unrotatable ones. Push stays explicit.
-pub fn rotate_group(
-    p: &Platform,
-    env: &str,
-    name: &str,
-) -> Result<RotateOutcome, LatchError> {
+pub fn rotate_group(p: &Platform, env: &str, name: &str) -> Result<RotateOutcome, LatchError> {
     crate::discovery::validate_env(env)?;
     let _lock = lock::acquire(p, 10, || {})?;
     let repo = repo_handle(p)?;

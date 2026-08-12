@@ -23,6 +23,7 @@ hex.workspace = true
 sha2.workspace = true
 x25519-dalek.workspace = true
 zeroize.workspace = true
+minisign-verify.workspace = true
 
 [dev-dependencies]
 tempdir = "0.3"

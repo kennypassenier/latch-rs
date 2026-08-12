@@ -241,7 +241,10 @@ pub fn exec(cmd: Cmd, m: &Model, p: &Platform, ui_cwd: &str) -> Msg {
                 let skipped = if out.skipped.is_empty() {
                     String::new()
                 } else {
-                    format!(" ⚠ {} key(s) not on this machine skipped", out.skipped.len())
+                    format!(
+                        " ⚠ {} key(s) not on this machine skipped",
+                        out.skipped.len()
+                    )
                 };
                 Msg::Op(OpResult::Done(format!(
                     "✓ {} credential(s) backed up to {}{}",

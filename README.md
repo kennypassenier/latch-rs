@@ -41,8 +41,8 @@ latch run -- docker compose up     # secrets straight into the process
 
 ## Install
 
-Linux only (officially — see AR17); MSRV 1.86. Download the latest
-release binary, or build from source:
+Linux and Windows 11 (AR17); MSRV 1.86. Download the release binary for
+your OS, or build from source:
 
 ```
 cargo build --release -p latch-cli    # target/release/latch

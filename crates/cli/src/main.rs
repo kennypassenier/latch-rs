@@ -254,7 +254,10 @@ enum GroupAction {
 
 /// K1: refuse to dump core. latch holds decrypted secrets and derived
 /// keys in memory; a core file would spill them to disk. PR_SET_DUMPABLE
-/// also blocks ptrace by another process at the same uid.
+/// also blocks ptrace by another process at the same uid. Linux-only;
+/// Windows has no equivalent core-file default to disable here (WER is
+/// off for console apps unless configured), so it is a no-op there.
+#[cfg(target_os = "linux")]
 fn harden_process() {
     unsafe {
         libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);
@@ -265,13 +268,22 @@ fn harden_process() {
         libc::setrlimit(libc::RLIMIT_CORE, &zero);
     }
 }
+#[cfg(not(target_os = "linux"))]
+fn harden_process() {}
 
-/// K1: ~/.latch holds the credential file and clone — make the directory
-/// itself 0700 (its files are already 0600, but a 0755 dir leaks names).
+/// K1: ~/.latch holds the credential file and clone — restrict it to the
+/// current user. On Unix that is mode 0700; on Windows the profile
+/// directory (C:\Users\<you>) is already user-private by default NTFS
+/// ACLs, so creating the directory there is enough.
+#[cfg(unix)]
 fn secure_latch_home(home: &str) {
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::create_dir_all(home);
     let _ = std::fs::set_permissions(home, std::fs::Permissions::from_mode(0o700));
+}
+#[cfg(not(unix))]
+fn secure_latch_home(home: &str) {
+    let _ = std::fs::create_dir_all(home);
 }
 
 fn main() {

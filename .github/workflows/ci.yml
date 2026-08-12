@@ -23,6 +23,18 @@ jobs:
       - name: test
         run: cargo test -p latch-core -p latch-cli -p latch-ui
 
+  # AR17: the code must keep COMPILING for Windows on every push — this
+  # catches a cfg-gating regression immediately instead of only at release
+  # time. (Runtime behaviour on Windows is verified by Kenny per
+  # docs/WINDOWS_TEST_CHECKLIST.md; CI only proves it builds.)
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build for Windows
+        run: cargo build -p latch-core -p latch-cli -p latch-ui
+
   # AR16: the pinned minimum supported Rust version must keep building —
   # a dependency bump that silently raises the bar fails here, not on a
   # machine with an older toolchain months later.

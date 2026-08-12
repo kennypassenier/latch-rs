@@ -10,6 +10,20 @@ use super::{Env, Files, Keyring, ProcOutput, Prompt};
 
 const KEYRING_SERVICE: &str = "latch";
 
+/// Apply a Unix permission mode to an open-options builder. On Windows
+/// there is no mode: NTFS ACLs make files under the user profile private
+/// by default, so this is a no-op (privacy comes from the ~/.latch
+/// location, not a mode bit).
+#[cfg(unix)]
+fn with_mode(opts: &mut std::fs::OpenOptions, mode: u32) -> &mut std::fs::OpenOptions {
+    use std::os::unix::fs::OpenOptionsExt;
+    opts.mode(mode)
+}
+#[cfg(not(unix))]
+fn with_mode(opts: &mut std::fs::OpenOptions, _mode: u32) -> &mut std::fs::OpenOptions {
+    opts
+}
+
 pub struct RealEnv;
 impl Env for RealEnv {
     fn var(&self, name: &str) -> Option<String> {
@@ -31,7 +45,6 @@ impl Files for RealFiles {
     }
 
     fn write_atomic(&self, path: &str, content: &[u8]) -> Result<(), LatchError> {
-        use std::os::unix::fs::OpenOptionsExt;
         let p = std::path::Path::new(path);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -43,15 +56,11 @@ impl Files for RealFiles {
         }
         let tmp = format!("{}.tmp", path);
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)
-                .map_err(|e| {
-                    LatchError::other(format!("write {}: {}", tmp, e), "check permissions")
-                })?;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            let mut f = with_mode(&mut opts, 0o600).open(&tmp).map_err(|e| {
+                LatchError::other(format!("write {}: {}", tmp, e), "check permissions")
+            })?;
             f.write_all(content).map_err(|e| {
                 LatchError::other(format!("write {}: {}", tmp, e), "check disk space")
             })?;
@@ -72,29 +81,27 @@ impl Files for RealFiles {
     }
 
     fn write_executable(&self, path: &str, content: &[u8]) -> Result<(), LatchError> {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
         let p = std::path::Path::new(path);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent).ok();
         }
         let tmp = format!("{}.tmp-exe", path);
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o755)
-                .open(&tmp)
-                .map_err(|e| LatchError::other(format!("write {}: {}", tmp, e), "check permissions"))?;
-            f.write_all(content)
-                .map_err(|e| LatchError::other(format!("write {}: {}", tmp, e), "check disk space"))?;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            let mut f = with_mode(&mut opts, 0o755).open(&tmp).map_err(|e| {
+                LatchError::other(format!("write {}: {}", tmp, e), "check permissions")
+            })?;
+            f.write_all(content).map_err(|e| {
+                LatchError::other(format!("write {}: {}", tmp, e), "check disk space")
+            })?;
             f.sync_all().ok();
         }
         // Rename preserves the 0755 mode, so the binary is executable the
         // instant it appears at `path` — no write-then-chmod window (K1).
-        std::fs::rename(&tmp, path)
-            .map_err(|e| LatchError::other(format!("rename to {}: {}", path, e), "check permissions"))?;
+        std::fs::rename(&tmp, path).map_err(|e| {
+            LatchError::other(format!("rename to {}: {}", path, e), "check permissions")
+        })?;
         if let Some(parent) = p.parent() {
             if let Ok(dir) = std::fs::File::open(parent) {
                 dir.sync_all().ok();
@@ -115,16 +122,12 @@ impl Files for RealFiles {
     }
 
     fn try_create_exclusive(&self, path: &str, content: &[u8]) -> Result<bool, LatchError> {
-        use std::os::unix::fs::OpenOptionsExt;
         if let Some(parent) = std::path::Path::new(path).parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)
-        {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        match with_mode(&mut opts, 0o600).open(path) {
             Ok(mut f) => {
                 f.write_all(content).ok();
                 Ok(true)
@@ -388,7 +391,17 @@ pub fn latch_home(env: &dyn Env) -> String {
     format!("{}/.latch", home)
 }
 
-/// tmpfs runtime dir for the AR11 session cache.
+/// tmpfs runtime dir for the AR11 session cache and W11 zero-disk edit.
+/// Only a RAM-backed, never-swapped filesystem qualifies. On Linux that
+/// is `$XDG_RUNTIME_DIR`. Windows has no tmpfs, so this is None there:
+/// the session cache is simply off (WB — the Credential Manager covers
+/// key storage) and `latch edit` refuses (WA — plaintext must never touch
+/// a real disk; edit the file with your editor and `latch commit`).
+#[cfg(unix)]
 pub fn runtime_dir(env: &dyn Env) -> Option<String> {
     env.var("XDG_RUNTIME_DIR").map(|d| format!("{}/latch", d))
+}
+#[cfg(not(unix))]
+pub fn runtime_dir(_env: &dyn Env) -> Option<String> {
+    None
 }
