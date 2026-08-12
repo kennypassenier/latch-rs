@@ -106,3 +106,31 @@ an XDG-layout flag override for those who want it.
 - **Scope (W12d)**: global per environment (cross-project), each group
   encrypted with its own auto-created group key, included in K6 backups
   and M2 clones.
+
+## Tech-choice record (Phase 3, decided 2026-08-12 in the retro-fit gate)
+
+## AR16 · MSRV: pinned at 1.86, CI-verified
+`rust-version = "1.86"` in the workspace (the highest requirement in the
+non-WASI dependency graph; matches the legacy pin). CI builds the three
+v2 crates with exactly that toolchain — a dependency bump that raises
+the bar turns red in CI instead of failing on an older machine later.
+Raising the MSRV is a deliberate commit, never a side effect.
+
+## AR17 · Platform scope: Linux only, officially
+The release ships one asset (x86_64 linux-gnu), W11 zero-disk editing
+requires a tmpfs runtime dir, and only Linux is tested. The code avoids
+gratuitous platform locks, but no macOS/Windows support is claimed
+anywhere. Revisit only with a real second platform and a machine to
+test it on.
+
+## AR18 · Dependency policy: formally conservative
+~13 direct dependencies in core, all established crates; network I/O
+deliberately via the system git/curl binaries instead of an HTTP stack.
+Adding a NEW direct dependency to any v2 crate requires a mini-round
+with Kenny first (supply-chain surface is a decision, not a default).
+Routine version bumps of existing dependencies stay free.
+
+## AR19 · License: AGPL-3.0-or-later confirmed
+Inherited from v1, now an explicit decision for v2. Anyone modifying
+latch and offering it as a network service must publish their changes;
+for personal use nothing changes.

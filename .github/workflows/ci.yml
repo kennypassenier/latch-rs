@@ -23,6 +23,19 @@ jobs:
       - name: test
         run: cargo test -p latch-core -p latch-cli -p latch-ui
 
+  # AR16: the pinned minimum supported Rust version must keep building —
+  # a dependency bump that silently raises the bar fails here, not on a
+  # machine with an older toolchain months later.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.86"
+      - name: build with MSRV
+        run: cargo build -p latch-core -p latch-cli -p latch-ui
+
   # Informational: measured line coverage per crate (gap 5 of the test
   # audit). Not a gate — the gates are the suites themselves — but the
   # number is visible on every run so drift is noticed.

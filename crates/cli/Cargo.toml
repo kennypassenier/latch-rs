@@ -2,6 +2,7 @@
 name = "latch-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "latch v2 CLI — thin shell over latch-core (AR1)"

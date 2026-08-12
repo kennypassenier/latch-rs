@@ -2,6 +2,7 @@
 name = "latch-ui"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "latch v2 management TUI (G1, AR8) — grows in L6"
