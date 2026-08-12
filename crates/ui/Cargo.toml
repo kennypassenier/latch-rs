@@ -1,0 +1,16 @@
+[package]
+name = "latch-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "latch v2 management TUI (G1, AR8) — grows in L6"
+
+[dependencies]
+latch-core = { path = "../core" }
+ratatui.workspace = true
+
+[dev-dependencies]
+tempdir = "0.3"
+hex.workspace = true

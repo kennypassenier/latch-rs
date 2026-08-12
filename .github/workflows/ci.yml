@@ -1,306 +1,63 @@
-name: Pipeline
+# CI gates (AR7): red blocks merge. Gates cover the v2 workspace crates;
+# the legacy package is frozen reference (AR14) and deliberately ungated —
+# its tests are environment-dependent (keyring) by v1 design.
+name: ci
 
-# Define the triggers for the workflow
 on:
   push:
-    branches:
-      - main
+    branches: ["**"]
   pull_request:
-    branches:
-      - main
-  # Allow manual triggering from the GitHub Actions UI
-  workflow_dispatch:
-
-# Define global environment variables available to all jobs
-env:
-  # Force Cargo to output colored text for easier debugging in the logs
-  CARGO_TERM_COLOR: always
-  # Treat all Rust warnings as hard errors to enforce code quality
-  RUSTFLAGS: "-D warnings"
-  # Target the GitHub Container Registry
-  REGISTRY: ghcr.io
-  # Use the standard repository name for the image
-  IMAGE_NAME: ${{ github.repository }}
-
-# Restrict permissions to the minimum required for the jobs
-permissions:
-  contents: write
-  pull-requests: read
-  packages: write
 
 jobs:
-  fmt:
-    name: Rustfmt
+  gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Install the stable Rust toolchain specifically with the formatting component
-      - name: Install stable toolchain with rustfmt
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
-      # Enforce standard Rust formatting across the entire codebase
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt -p latch-core -p latch-cli -p latch-ui -- --check
+      - name: clippy
+        run: cargo clippy -p latch-core -p latch-cli -p latch-ui --all-targets -- -D warnings
+      - name: test
+        run: cargo test -p latch-core -p latch-cli -p latch-ui
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
+  # AR17: the code must keep COMPILING for Windows on every push — this
+  # catches a cfg-gating regression immediately instead of only at release
+  # time. (Runtime behaviour on Windows is verified by Kenny per
+  # docs/WINDOWS_TEST_CHECKLIST.md; CI only proves it builds.)
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      # Install the stable toolchain with the clippy linter
-      - name: Install stable toolchain with clippy
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      # Install necessary Linux system dependencies required by latch
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-      # Cache Cargo registry and target directories to speed up workflow execution
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      # Run the linter and deny all warnings as configured in the global env
-      - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build for Windows
+        run: cargo build -p latch-core -p latch-cli -p latch-ui
 
+  # AR16: the pinned minimum supported Rust version must keep building —
+  # a dependency bump that silently raises the bar fails here, not on a
+  # machine with an older toolchain months later.
   msrv:
-    name: MSRV (Rust 1.86)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Enforce the Minimum Supported Rust Version to ensure backward compatibility
-      - name: Install Rust 1.86
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86"
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
-      # We only need to check compilation against the MSRV, not run the full suite
-      - name: Check MSRV compiles
-        run: cargo check --locked
+      - name: build with MSRV
+        run: cargo build -p latch-core -p latch-cli -p latch-ui
 
-  version:
-    name: Version tag
-    # Only run the version bumping process when changes are pushed to the main branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Ensure all foundational checks pass before tagging a new release
-    needs:
-      - fmt
-      - clippy
-      - msrv
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.compute.outputs.version }}
-      tag: ${{ steps.compute.outputs.tag }}
-    steps:
-      # Fetch the entire git history so we can accurately read previous tags
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      # Determine the next logical version number based on Cargo.toml and existing tags
-      - name: Compute next version
-        id: compute
-        shell: bash
-        run: |
-          cargo_version=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
-          latest_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
-          latest_version=${latest_tag#v}
-
-          if [[ -z "$latest_tag" ]]; then
-            next_version="$cargo_version"
-          else
-            highest=$(printf '%s\n%s\n' "$cargo_version" "$latest_version" | sort -V | tail -n1)
-            if [[ "$highest" == "$cargo_version" && "$cargo_version" != "$latest_version" ]]; then
-              next_version="$cargo_version"
-            else
-              IFS='.' read -r major minor patch <<< "$latest_version"
-              next_version="$major.$minor.$((patch + 1))"
-            fi
-          fi
-
-          echo "version=$next_version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$next_version" >> "$GITHUB_OUTPUT"
-      # Apply the calculated tag to the repository and push it back up
-      - name: Create and push tag
-        shell: bash
-        run: |
-          if git rev-parse -q --verify "refs/tags/${{ steps.compute.outputs.tag }}" >/dev/null; then
-            echo "Tag already exists: ${{ steps.compute.outputs.tag }}"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.compute.outputs.tag }}" -m "release ${{ steps.compute.outputs.tag }}"
-          git push origin "${{ steps.compute.outputs.tag }}"
-
-  build-binaries:
-    name: Build ${{ matrix.target }}
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Wait for the version logic to complete so the correct tag is injected
-    needs: version
-    runs-on: ubuntu-latest
-    # Define a matrix so we can easily add more standard target architectures later
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            archive: latch-linux-x86_64.tar.gz
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - name: Install Linux build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libdbus-1-dev libsecret-1-dev
-      # Compile the release binary and inject the computed version via environment variable
-      - name: Build release binary
-        shell: bash
-        run: LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} cargo build --release --locked --target ${{ matrix.target }}
-      # Compress the compiled binary into a standardized tar archive
-      - name: Package artifact
-        run: |
-          BIN=target/${{ matrix.target }}/release/latch
-          tar -czf ${{ matrix.archive }} -C $(dirname $BIN) $(basename $BIN)
-      # Upload the archive to GitHub Actions artifacts so the release job can grab it
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.archive }}
-          path: ${{ matrix.archive }}
-
-  build-lxc-binary:
-    name: Build LXC Compatible Binary
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: version
+  # Informational: measured line coverage per crate (gap 5 of the test
+  # audit). Not a gate — the gates are the suites themselves — but the
+  # number is visible on every run so drift is noticed.
+  coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      # Utilize the Docker daemon natively on the GitHub runner to replicate the Makefile logic
-      # This compiles the binary specifically against glibc 2.36 inside a debian 12 slim container
-      - name: Build release binary via Docker
-        run: |
-          docker run --rm \
-            --volume "${PWD}:/workspace" \
-            --workdir /workspace \
-            --env LATCH_BUILD_VERSION=${{ needs.version.outputs.version }} \
-            debian:12-slim \
-            sh -c "apt-get update -y && \
-                   apt-get install -y --no-install-recommends ca-certificates curl build-essential libssl-dev pkg-config && \
-                   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && \
-                   . \$HOME/.cargo/env && \
-                   cargo build --release"
-                   
-      # Package the resulting binary with a distinct LXC filename to avoid conflicts
-      - name: Package LXC artifact
-        run: |
-          BIN=target/release/latch
-          tar -czf latch-linux-x86_64-lxc.tar.gz -C $(dirname $BIN) $(basename $BIN)
-          
-      # Upload the specialized LXC artifact for the release job
-      - name: Upload LXC binary artifact
-        uses: actions/upload-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          name: latch-linux-x86_64-lxc.tar.gz
-          path: latch-linux-x86_64-lxc.tar.gz
-
-  github-release:
-    name: GitHub Release
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # This job must wait for both the standard binaries and the specialized LXC binary
-    needs:
-      - version
-      - build-binaries
-      - build-lxc-binary
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # Download all previously uploaded artifacts from the build jobs into a single directory
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-      # Create the actual GitHub release and attach the gathered artifacts
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.version.outputs.tag }}
-          name: ${{ needs.version.outputs.tag }}
-          generate_release_notes: true
-          files: artifacts/**
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # docker:
-  #   name: Docker image build
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   # Ensure the docker image is only built after the versions and binaries are confirmed successful
-  #   needs:
-  #     - version
-  #     - build-binaries
-  #     - build-lxc-binary
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     # Setup QEMU to allow multi-architecture builds
-  #     - name: Set up QEMU
-  #       uses: docker/setup-qemu-action@v3
-  #     # Setup Buildx to utilize advanced Docker build features
-  #     - name: Set up Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #     # Authenticate against the GitHub Container Registry
-  #     - name: Log in to GHCR
-  #       uses: docker/login-action@v3
-  #       with:
-  #         registry: ${{ env.REGISTRY }}
-  #         username: ${{ github.actor }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
-  #     # Generate the appropriate tags and labels based on the computed repository version
-  #     - name: Docker metadata
-  #       id: meta
-  #       uses: docker/metadata-action@v5
-  #       with:
-  #         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-  #         tags: |
-  #           type=raw,value=main
-  #           type=raw,value=v${{ needs.version.outputs.version }}
-  #           type=raw,value=v${{ needs.version.outputs.version }}.${{ github.run_number }}
-  #           type=sha,prefix=sha-,format=short
-  #     # Build the final Docker image and push it to the registry
-  #     - name: Build and push
-  #       uses: docker/build-push-action@v5
-  #       with:
-  #         context: .
-  #         platforms: linux/amd64,linux/arm64
-  #         build-args: |
-  #           LATCH_BUILD_VERSION=${{ needs.version.outputs.version }}
-  #         push: true
-  #         tags: ${{ steps.meta.outputs.tags }}
-  #         labels: ${{ steps.meta.outputs.labels }}
-  #         cache-from: type=gha
-  #         cache-to: type=gha,mode=max
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: measure
+        run: cargo llvm-cov -p latch-core -p latch-cli -p latch-ui --summary-only

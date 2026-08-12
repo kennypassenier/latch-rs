@@ -1,0 +1,22 @@
+[package]
+name = "latch-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "latch v2 CLI — thin shell over latch-core (AR1)"
+
+[[bin]]
+name = "latch"
+path = "src/main.rs"
+
+[dependencies]
+latch-core = { path = "../core" }
+latch-ui = { path = "../ui" }
+clap.workspace = true
+clap_complete = "4"
+libc.workspace = true
+
+[dev-dependencies]
+tempdir = "0.3"

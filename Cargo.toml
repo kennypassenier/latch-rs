@@ -1,3 +1,31 @@
+[workspace]
+members = ["crates/core", "crates/cli", "crates/ui"]
+default-members = ["crates/core", "crates/cli", "crates/ui"]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.86"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/kennypassenier/latch-rs"
+
+[workspace.dependencies]
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"
+hex = "0.4"
+sha2 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+clap = { version = "4", features = ["derive"] }
+ratatui = "0.29"
+zeroize = "1"
+libc = "0.2"
+minisign-verify = "0.2"
+
 [package]
 name = "latch-rs"
 version = "1.0.0"
@@ -8,7 +36,7 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/kennypassenier/latch-rs"
 
 [[bin]]
-name = "latch"
+name = "latch-legacy"
 path = "src/main.rs"
 
 [dependencies]

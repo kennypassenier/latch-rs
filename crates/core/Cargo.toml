@@ -1,0 +1,30 @@
+[package]
+name = "latch-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "latch v2 core: all domain logic, zero ambient I/O (AR1)"
+
+[dependencies]
+chacha20poly1305.workspace = true
+argon2.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+keyring = { version = "3", features = ["linux-native"] }
+rpassword = "7"
+dirs = "5"
+ignore = "0.4"
+hex.workspace = true
+sha2.workspace = true
+x25519-dalek.workspace = true
+zeroize.workspace = true
+minisign-verify.workspace = true
+
+[dev-dependencies]
+tempdir = "0.3"
+hex.workspace = true
