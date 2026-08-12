@@ -88,10 +88,79 @@ pub fn rotate(p: &Platform, cwd: &str, env: Option<&str>) -> Result<RotateOutcom
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
-    let _ = repo.refresh(false)?;
+    // D3a: rotation MUST run on fresh content. On a stale clone we would
+    // re-encrypt outdated ciphertext and, after a forced push, resurrect
+    // old secret values sealed under the new key — invisibly wrong.
+    repo.refresh(true)?;
     let store = CredStore::new(p);
 
-    let (old, new) = keys::rotate(&store, &proj.name, env)?;
+    // D2c: if the fresh repo already carries a generation at or above the
+    // one we are about to mint, another machine rotated first. Minting
+    // the same generation number with a different key would make its
+    // files fail authentication and be reported as Corrupt. Refuse and
+    // point at the fix: take that machine's key first.
+    let current_gen = match env {
+        Some(e) => keys::for_env(&store, &proj.name, e)?,
+        None => keys::get(&store, &proj.name)?,
+    }
+    .map(|k| k.id.generation)
+    .unwrap_or(0);
+    let scan_envs: Vec<String> = match env {
+        Some(e) => vec![e.to_string()],
+        None => {
+            let mut s = std::collections::BTreeSet::new();
+            for rel in repo.list(&proj.name)? {
+                if let Some((e, _)) = rel.split_once('/') {
+                    s.insert(e.to_string());
+                }
+            }
+            s.into_iter().collect()
+        }
+    };
+    for e in &scan_envs {
+        let prefix = format!("{}/{}", proj.name, e);
+        for enc_name in repo.list(&prefix)? {
+            if !enc_name.ends_with(".enc") {
+                continue;
+            }
+            let enc_rel = format!("{}/{}", prefix, enc_name);
+            if let Some(sealed) = repo.read(&enc_rel)? {
+                if let Ok(id) = envelope::peek_key_id(&sealed, &enc_rel) {
+                    if id.generation > current_gen {
+                        return Err(LatchError::other(
+                            format!(
+                                "the repo already holds generation {} for '{}' — another machine rotated first",
+                                id.generation, proj.name
+                            ),
+                            "take that machine's current key here (latch clone / latch key restore) before rotating again",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // B1: a leftover `#prev` means a previous rotation was interrupted
+    // mid-re-encryption. RESUME it (finish sealing everything under the
+    // current key) instead of minting yet another generation — that both
+    // heals the mixed repo and avoids runaway generation numbers. Only a
+    // clean state mints the next generation.
+    let (old, new) = match keys::prev(&store, &proj.name, env)? {
+        Some(prev) => {
+            let cur = match env {
+                Some(e) => keys::for_env(&store, &proj.name, e)?,
+                None => keys::get(&store, &proj.name)?,
+            }
+            .ok_or_else(|| {
+                LatchError::other(
+                    "interrupted rotation with no current key",
+                    "restore a key backup (latch key restore)",
+                )
+            })?;
+            (Some(prev), cur)
+        }
+        None => keys::rotate(&store, &proj.name, env)?,
+    };
 
     // Which environments do the new key's files live in?
     let envs: Vec<String> = match env {
@@ -116,6 +185,8 @@ pub fn rotate(p: &Platform, cwd: &str, env: Option<&str>) -> Result<RotateOutcom
         }
     };
 
+    // Try the current key first (already-rotated / resumed), then old —
+    // so this is idempotent and a re-run finishes the job.
     let mut reencrypted = Vec::new();
     for e in &envs {
         let prefix = format!("{}/{}", proj.name, e);
@@ -124,27 +195,75 @@ pub fn rotate(p: &Platform, cwd: &str, env: Option<&str>) -> Result<RotateOutcom
                 continue;
             }
             let enc_rel = format!("{}/{}", prefix, enc_name);
-            let sealed = repo.read(&enc_rel)?.expect("listed file readable");
-            // The file's current key is whatever resolved BEFORE this
-            // rotation for its env — that is `old` for these envs.
-            let old_key = old.as_ref().ok_or_else(|| {
-                LatchError::other(
-                    format!("cannot re-encrypt {}: no previous key held", enc_rel),
-                    "restore the old key first (latch key restore), then rotate",
-                )
-            })?;
-            let plain = envelope::open(&old_key.key, &old_key.id, &sealed, &enc_rel)?;
+            let Some(sealed) = repo.read(&enc_rel)? else {
+                continue; // removed underneath us — skip (D6)
+            };
+            // Already at the new generation? Leave it (resume case).
+            if envelope::open(&new.key, &new.id, &sealed, &enc_rel).is_ok() {
+                continue;
+            }
+            let plain = old
+                .as_ref()
+                .and_then(|k| envelope::open(&k.key, &k.id, &sealed, &enc_rel).ok())
+                .ok_or_else(|| {
+                    LatchError::other(
+                        format!("cannot re-encrypt {}: no key opens it", enc_rel),
+                        "restore the old key first (latch key restore), then rotate",
+                    )
+                })?;
             let resealed = envelope::seal(&new.key, &new.id, &plain)?;
             repo.write(&enc_rel, &resealed)?;
             reencrypted.push(enc_rel);
         }
     }
+    // Everything is now under the new key — the old generation can go.
+    keys::clear_prev(&store, &proj.name, env)?;
 
     Ok(RotateOutcome {
         label: new.id.label.clone(),
         old_generation: old.map(|k| k.id.generation),
         new_generation: new.id.generation,
         reencrypted,
+        caveat: ROTATE_CAVEAT,
+    })
+}
+
+/// D2d: rotate a GROUP key (K3 for groups). Re-seals the group's stored
+/// content under a fresh key generation; the cross-project blast-radius
+/// keys were previously the only unrotatable ones. Push stays explicit.
+pub fn rotate_group(
+    p: &Platform,
+    env: &str,
+    name: &str,
+) -> Result<RotateOutcome, LatchError> {
+    crate::discovery::validate_env(env)?;
+    let _lock = lock::acquire(p, 10, || {})?;
+    let repo = repo_handle(p)?;
+    repo.ensure()?;
+    repo.refresh(true)?;
+    let store = CredStore::new(p);
+
+    let enc_rel = format!("_groups/{}/{}.enc", env, name);
+    let sealed = repo.read(&enc_rel)?.ok_or_else(|| {
+        LatchError::other(
+            format!("group '{}' has no stored content for env '{}'", name, env),
+            "commit a member with content first",
+        )
+    })?;
+
+    let (old, new) = crate::groups::key_rotate(&store, name, env)?;
+    // Open with the new key (resume case) or the old one, then re-seal.
+    let plain = envelope::open(&new.key, &new.id, &sealed, &enc_rel)
+        .or_else(|_| envelope::open(&old.key, &old.id, &sealed, &enc_rel))?;
+    let resealed = envelope::seal(&new.key, &new.id, &plain)?;
+    repo.write(&enc_rel, &resealed)?;
+    crate::groups::key_clear_prev(&store, name, env)?;
+
+    Ok(RotateOutcome {
+        label: crate::groups::slot_for(name, env),
+        old_generation: Some(old.id.generation),
+        new_generation: new.id.generation,
+        reencrypted: vec![enc_rel],
         caveat: ROTATE_CAVEAT,
     })
 }

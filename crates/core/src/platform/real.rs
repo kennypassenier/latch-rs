@@ -59,7 +59,16 @@ impl Files for RealFiles {
         }
         std::fs::rename(&tmp, path).map_err(|e| {
             LatchError::other(format!("rename to {}: {}", path, e), "check permissions")
-        })
+        })?;
+        // D2a: fsync the directory so the rename itself survives a power
+        // cut — without this a crash can leave the file missing even
+        // though write+rename "succeeded".
+        if let Some(parent) = p.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                dir.sync_all().ok();
+            }
+        }
+        Ok(())
     }
 
     fn remove(&self, path: &str) -> Result<(), LatchError> {

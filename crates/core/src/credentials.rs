@@ -143,17 +143,23 @@ impl<'a> CredStore<'a> {
         Ok(None)
     }
 
-    /// Store a slot: keyring where available, otherwise the encrypted file
-    /// (creating it — with a passphrase — on first use).
+    /// Store a slot. D2b: if a credential FILE already exists, write
+    /// there — reads consult env → file → keyring in that order, so once
+    /// the file holds a slot a keyring write would be shadowed forever
+    /// (the ssh-session split-brain bug: a key created headless lands in
+    /// the file, then a desktop rotation writes the keyring but reads keep
+    /// returning the stale file copy). Writing to whichever backend reads
+    /// will consult keeps them from disagreeing. Otherwise keyring where
+    /// available, else create the file.
     pub fn set(&self, slot: &str, value: &[u8]) -> Result<Source, LatchError> {
-        if self.p.keyring.available() {
-            self.p.keyring.set(slot, value)?;
-            return Ok(Source::Keyring);
+        if self.file_exists()? || !self.p.keyring.available() {
+            let (mut map, salt, key) = self.open_or_create_file()?;
+            map.slots.insert(slot.into(), hex::encode(value));
+            self.write_file_map(&map, &salt, &key)?;
+            return Ok(Source::File);
         }
-        let (mut map, salt, key) = self.open_or_create_file()?;
-        map.slots.insert(slot.into(), hex::encode(value));
-        self.write_file_map(&map, &salt, &key)?;
-        Ok(Source::File)
+        self.p.keyring.set(slot, value)?;
+        Ok(Source::Keyring)
     }
 
     pub fn delete(&self, slot: &str) -> Result<(), LatchError> {
@@ -250,6 +256,14 @@ impl<'a> CredStore<'a> {
             salt: *salt,
             envelope: sealed,
         };
+        // D2a: keep the previous file as .bak before overwriting — this is
+        // the single file holding every key; a power cut or a bad write
+        // must leave a recoverable copy behind, not an empty store.
+        if let Some(existing) = self.p.files.read(&self.cred_path())? {
+            self.p
+                .files
+                .write_atomic(&format!("{}.bak", self.cred_path()), &existing)?;
+        }
         self.p.files.write_atomic(&self.cred_path(), &cf.encode())
     }
 

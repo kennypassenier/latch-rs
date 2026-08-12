@@ -184,10 +184,13 @@ enum KeyAction {
         reveal: bool,
     },
     /// Mint the next key generation and re-encrypt (K3); --env creates or
-    /// rotates a per-environment key (K2).
+    /// rotates a per-environment key (K2); --group rotates a group key.
     Rotate {
         #[arg(long)]
         env: Option<String>,
+        /// Rotate the key of this W12 group instead of a project key.
+        #[arg(long)]
+        group: Option<String>,
     },
     /// Export ALL credentials as one passphrase-encrypted file (K6).
     Backup { file: String },
@@ -550,8 +553,16 @@ fn main() {
                     }
                 })
             }
-            KeyAction::Rotate { env } => {
-                latch_core::ops::keyops::rotate(&platform, &cwd, env.as_deref()).map(|r| {
+            KeyAction::Rotate { env, group } => {
+                let result = match group {
+                    Some(name) => latch_core::ops::keyops::rotate_group(
+                        &platform,
+                        env.as_deref().unwrap_or("dev"),
+                        &name,
+                    ),
+                    None => latch_core::ops::keyops::rotate(&platform, &cwd, env.as_deref()),
+                };
+                result.map(|r| {
                     match r.old_generation {
                         Some(old) => println!(
                             "✓ {} rotated: generation {} -> {}",

@@ -73,9 +73,54 @@ pub fn for_env_or_create(
     get_or_create(store, project)
 }
 
+/// Read the immediately-previous key generation kept during a rotation
+/// (B1). Present only while a rotation is in flight or was interrupted.
+pub fn prev(store: &CredStore, project: &str, env: Option<&str>) -> Result<Option<ProjectKey>, LatchError> {
+    let label = label_for(project, env);
+    let Some((raw, _)) = store.get(&format!("key:{}#prev", label))? else {
+        return Ok(None);
+    };
+    decode(&label, &raw)
+}
+
+/// Clear the preserved previous key — called once a rotation has fully
+/// re-encrypted and can no longer need the old generation.
+pub fn clear_prev(store: &CredStore, project: &str, env: Option<&str>) -> Result<(), LatchError> {
+    let label = label_for(project, env);
+    store.delete(&format!("key:{}#prev", label))
+}
+
+/// The key that opens ciphertext sealed at `generation`: the current key,
+/// the preserved previous key, or none. Lets read paths survive a
+/// half-finished rotation (B1) instead of reporting Corrupt.
+pub fn for_generation(
+    store: &CredStore,
+    project: &str,
+    env: Option<&str>,
+    generation: u16,
+) -> Result<Option<ProjectKey>, LatchError> {
+    let cur = match env {
+        Some(e) => for_env(store, project, e)?,
+        None => get(store, project)?,
+    };
+    if let Some(k) = cur {
+        if k.id.generation == generation {
+            return Ok(Some(k));
+        }
+    }
+    match prev(store, project, env)? {
+        Some(k) if k.id.generation == generation => Ok(Some(k)),
+        _ => Ok(None),
+    }
+}
+
 /// K3: mint the next generation for the project key or an env-scoped key
-/// (creating the env scope if this is its first rotation). Returns
-/// (previously-resolved key if any, new key). The caller re-encrypts.
+/// (creating the env scope if this is its first rotation). The OLD key is
+/// preserved under `key:<label>#prev` BEFORE the new key is stored, so a
+/// crash mid-re-encryption never destroys the only copy of the old key
+/// (B1) — recovery opens every ciphertext with current-or-prev, and a
+/// re-run finishes the job. Returns (previously-resolved key, new key);
+/// the caller re-encrypts, then calls [`clear_prev`].
 pub fn rotate(
     store: &CredStore,
     project: &str,
@@ -86,6 +131,13 @@ pub fn rotate(
         None => get(store, project)?,
     };
     let label = label_for(project, env);
+    // Preserve the old key first (crash-safe ordering).
+    if let Some(o) = &old {
+        let mut raw = Vec::with_capacity(2 + KEY_LEN);
+        raw.extend_from_slice(&o.id.generation.to_le_bytes());
+        raw.extend_from_slice(&o.key);
+        store.set(&format!("key:{}#prev", label), &raw)?;
+    }
     let generation = old.as_ref().map(|k| k.id.generation + 1).unwrap_or(1);
     let mut key = [0u8; KEY_LEN];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut key);

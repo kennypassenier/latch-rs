@@ -119,6 +119,46 @@ pub fn key_get_or_create(store: &CredStore, name: &str, env: &str) -> Result<Gro
     })
 }
 
+/// D2d: mint the next generation of a group key (the old one preserved
+/// under a `#prev` slot, exactly like project keys — K3 for groups).
+/// Returns (old key, new key); the caller re-seals the group content.
+pub fn key_rotate(
+    store: &CredStore,
+    name: &str,
+    env: &str,
+) -> Result<(GroupKey, GroupKey), LatchError> {
+    let old = key_get(store, name, env)?.ok_or_else(|| {
+        LatchError::other(
+            format!("group '{}' has no key for env '{}' to rotate", name, env),
+            "commit a member first so the group and its key exist",
+        )
+    })?;
+    let mut raw = Vec::with_capacity(2 + KEY_LEN);
+    raw.extend_from_slice(&old.id.generation.to_le_bytes());
+    raw.extend_from_slice(&old.key);
+    store.set(&format!("{}#prev", slot_for(name, env)), &raw)?;
+
+    let generation = old.id.generation + 1;
+    let mut key = [0u8; KEY_LEN];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut key);
+    let mut raw = Vec::with_capacity(2 + KEY_LEN);
+    raw.extend_from_slice(&generation.to_le_bytes());
+    raw.extend_from_slice(&key);
+    store.set(&slot_for(name, env), &raw)?;
+    Ok((
+        old,
+        GroupKey {
+            key,
+            id: KeyId::new(slot_for(name, env), generation)?,
+        },
+    ))
+}
+
+/// Clear a group key's preserved previous generation (after re-seal).
+pub fn key_clear_prev(store: &CredStore, name: &str, env: &str) -> Result<(), LatchError> {
+    store.delete(&format!("{}#prev", slot_for(name, env)))
+}
+
 // ── Local baseline state (never in git — this is per-machine memory) ────
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
