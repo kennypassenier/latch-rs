@@ -16,7 +16,19 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | evaluation form 2026-08-12: all 11 findings → Close |
 | Next gate | approval form SCOPE/CLAUDE/INVENTORY; then tech-choice + critic mini-rounds; docs approval; release report ("Tag & release?" = Kenny's go); retro |
 | AFK mode | off |
-| Build state | L0-L9 done, 59 tests green, CI enforcing, v2.0.0-dev on `v2-redesign` |
+| Build state | L0-L9 + hardening + Windows/D4 done; ~90 tests green, CI enforcing, v2.0.0-dev on `v2-redesign` |
+
+## Deferred to end-of-project (Kenny-gated)
+
+- **Windows 11 runtime verification** — the Windows machine is only
+  reachable at the end of the project. The code is cross-platform and CI
+  builds it on windows-latest, but `docs/WINDOWS_TEST_CHECKLIST.md` must
+  be run on the real Win11 machine before Windows is "verified". Do not
+  treat Windows as runtime-confirmed until then.
+- **RELEASE_PUBKEY** in `crates/core/src/ops/update.rs` is still the
+  placeholder — `latch update` fails closed until Kenny does the minisign
+  key ceremony (OPERATIONS_RUNBOOK R11) and gives Claude the public key
+  to bake in.
 
 Historical note: phases 0-9 ran de facto during the v2 rewrite (forms
 for features and architecture, milestones L0-L9, hardening audit,
