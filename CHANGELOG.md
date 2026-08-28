@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.0.1 — 2026-08-28
+
+Bug-fix release. 2.0.0's discovery honoured `.gitignore`, so in any real
+project it skipped exactly the files latch exists to manage.
+
+### Fixed
+- **Discovery no longer reads `.gitignore` (D1 amendment, D8).** Every
+  project lists `.env` there; latch consequently found nothing and
+  reported "0 file(s)" as a successful commit. Found while consuming
+  latch from another project: a correct `.env` was never stored, silently.
+  A parent repository's `.gitignore` could hide a subproject's `.env` too.
+- **`.env.sample` is a template again**, like `.env.example` (v1 parity);
+  2.0.0 would have encrypted it as a secret.
+- **The secrets clone is listed unfiltered**: an ignore file that wandered
+  into latch's own storage could have hidden a ciphertext from a pull.
+
+### Added
+- **`.latchignore`** (D8): latch's own exclusion file, gitignore format
+  including negations, read only by latch. A built-in list is always
+  skipped — `.git`, `.latch`, `node_modules`, `target`, `vendor`,
+  `.venv`, `venv` — and a negation in the project-root `.latchignore`
+  (`!vendor/`) lifts an entry. `latch init` leaves a commented starter
+  file behind.
+- **`latch status --no-ignore`**: lists the env files the rules are
+  hiding. A view only; a commit still respects the rules.
+- **A warning when discovery finds nothing**, naming the directory, the
+  rules in play and that flag — instead of a success line reading
+  "0 file(s)".
+
+### Tests
+- `crates/core/tests/d8_ignore_tests.rs`: 9 tests against the real
+  filesystem and real git. The mock file backend has no ignore semantics,
+  which is exactly why ~90 green tests never saw this.
+
 ## 2.0.0 — 2026-08-12
 
 A ground-up Rust rewrite ("v2"). A clean break from v1: new on-disk

@@ -16,7 +16,7 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | evaluation form 2026-08-12: all 11 findings → Close |
 | Next gate | approval form SCOPE/CLAUDE/INVENTORY; then tech-choice + critic mini-rounds; docs approval; release report ("Tag & release?" = Kenny's go); retro |
 | AFK mode | off |
-| Build state | L0-L9 + hardening + Windows/D4 done; ~90 tests green, CI enforcing, v2.0.0-dev on `v2-redesign` |
+| Build state | released 2.0.0 on `main`; 2.0.1 prepared (D8 `.latchignore` fix, tag = Kenny's go), ~100 tests green, CI enforcing |
 
 ## Deferred to end-of-project (Kenny-gated)
 
@@ -25,10 +25,10 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
   builds it on windows-latest, but `docs/WINDOWS_TEST_CHECKLIST.md` must
   be run on the real Win11 machine before Windows is "verified". Do not
   treat Windows as runtime-confirmed until then.
-- **RELEASE_PUBKEY** in `crates/core/src/ops/update.rs` is still the
-  placeholder — `latch update` fails closed until Kenny does the minisign
-  key ceremony (OPERATIONS_RUNBOOK R11) and gives Claude the public key
-  to bake in.
+- ~~**RELEASE_PUBKEY**~~ — done: the real minisign public key is baked
+  into `crates/core/src/ops/update.rs` (commit a39fe19). Every release
+  still needs `scripts/sign-release.sh <tag>` afterwards, or
+  `latch update` refuses it.
 
 Historical note: phases 0-9 ran de facto during the v2 rewrite (forms
 for features and architecture, milestones L0-L9, hardening audit,
@@ -66,6 +66,12 @@ included. The legacy package is deliberately ungated (AR14).
 - The envelope byte format and KDF parameters are pinned by regression
   vectors in `envelope_tests.rs`; changing them is a format break and
   needs a mini-round.
+- Discovery must never consult `.gitignore` (D8, 2026-08-28 mini-round):
+  every project gitignores `.env`, and honouring it made latch silently
+  skip the files it manages. Exclusions live in `.latchignore` plus the
+  built-in list in `discovery::DEFAULT_IGNORED_DIRS`. Ignore semantics
+  are only provable against the real filesystem — the mock file backend
+  has none, which is how the bug survived ~90 green tests.
 - Publishing a release (tag push) is always Kenny's explicit go.
 - New direct dependencies need a mini-round with Kenny first (AR18);
   the MSRV (1.86, AR16) is raised only as a deliberate commit.

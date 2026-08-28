@@ -33,8 +33,13 @@ pub trait Files {
     /// Modification time as unix seconds, None if absent (AR11 TTL).
     fn mtime_unix(&self, path: &str) -> Result<Option<u64>, LatchError>;
     /// Recursively list files under `root` (relative paths, sorted),
-    /// honouring .gitignore rules (D1). Missing root = empty list.
+    /// honouring `.latchignore` and the built-in directory list (D8) —
+    /// never `.gitignore`. Missing root = empty list.
     fn walk(&self, root: &str) -> Result<Vec<String>, LatchError>;
+    /// The same walk with NO exclusions at all: the secrets clone, where
+    /// every ciphertext counts and an ignore file must never be able to
+    /// hide one, and the `--no-ignore` diagnostic (D8).
+    fn walk_all(&self, root: &str) -> Result<Vec<String>, LatchError>;
     /// Remove a directory tree (W9 reset). Missing tree is fine.
     fn remove_tree(&self, path: &str) -> Result<(), LatchError>;
 }
