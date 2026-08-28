@@ -43,6 +43,7 @@ const SWEEP: &[&[&str]] = &[
     &["pull"],
     &["status"],
     &["run", "--", "true"],
+    &["cat", ".env"],
     &["history"],
     &["rollback", "abc123"],
     &["verify"],

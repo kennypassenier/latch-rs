@@ -106,8 +106,11 @@ Inject secrets into a subprocess env; nothing touches disk.
   exit code of the child is propagated.
 
 ### W7 · Template expansion — **Should**
-`${VAR}` references resolved at pull/run. Strict mode: an unresolved
-placeholder is a hard error, never silently left in place.
+`${VAR}` references resolved at use time — `run` and `cat --expand`.
+Strict mode: an unresolved placeholder is a hard error, never silently
+left in place. *(Amended 2026-08-28, D11b: this section said "resolved
+at pull/run", but `pull` never expanded and must not — it restores files
+exactly as committed. The claim is corrected to match the code.)*
 - **Auto**: chain expansion, escaping, cycle detection → error; unresolved
   → error naming the variable.
 
@@ -267,6 +270,34 @@ exactly the unlinked ones the old listing hid.
   typed name refuses with nothing changed; headless without --yes is a
   hard error naming the flag; --purge-keys empties the key slots;
   list shows an unlinked repo project.
+
+### D10 · `latch cat` — single-file decrypt to stdout — **Must**
+*(Added 2026-08-28 by mini-round, on the homelab's request — the frozen
+list changes only this way. Kenny rated it Must.)* One env file of the
+project decrypted to stdout, nothing on disk: the per-file consumption
+verb between `run` (whole env into a child process) and `pull`
+(plaintext to disk). Raw by default — byte-identical to the committed
+file. `--expand` resolves `${VAR}` strictly against the project-wide
+variable map (W7); group members (W12) resolve to the group's content.
+Content goes to stdout only; notices and errors to stderr.
+- **Auto**: raw output byte-identical; missing file/key → hard error
+  with remedy (M7); plaintext-scan proves nothing lands on disk;
+  `--expand` resolves cross-file references and errors on unresolved.
+
+### D11 · `latch run` duplicate-variable rules — **Must**
+*(Added 2026-08-28 by mini-round, after three deep-dive rounds and a
+scan of the real repo: 3 of 51 names duplicated, one dangerous pair.)*
+Merging every env file into one process environment must never silently
+drop information: the same name with the SAME value in several files
+merges silently (the LOKI_URL shape — nothing is lost); the same name
+with DIFFERENT values is a hard error naming both files, with
+`--last-wins` as the deliberate escape (alphabetically last file wins —
+the pre-2.2.0 behaviour, now opt-in). Within one file, dotenv last-wins
+still applies. `cat --expand` uses the same merge; raw `cat` cannot
+collide.
+- **Auto**: same-value duplicate runs clean; different values → error
+  naming variable + both files + the flag; --last-wins keeps the
+  alphabetically last value.
 
 
 ### S5 · Local cache + offline pull/run — **Should**

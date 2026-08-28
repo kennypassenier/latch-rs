@@ -11,6 +11,7 @@ Commands:
   pull         Download and decrypt this project's env files (W4), all-or-nothing
   status       Local vs. committed state per file (W5)
   run          Run a command with secrets injected into its environment — nothing ever touches disk (W6). Works offline on the cached clone (S5)
+  cat          Print one env file decrypted to stdout — nothing touches disk (D10). Raw by default: byte-identical to what was committed
   history      List the versions of this project's secrets (S3)
   rollback     Restore this project's secrets to an older version in the clone; push to publish, pull to apply locally (S3)
   verify       Authenticate every ciphertext in the repository without writing anything (S6)
@@ -110,6 +111,7 @@ Arguments:
 Options:
       --env <ENV>        [default: dev]
       --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --last-wins        When a variable has different values in two files, keep the alphabetically last file's value instead of erroring (D11)
   -h, --help             Print help
 
 ═══ latch history --help

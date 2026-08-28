@@ -233,6 +233,7 @@ fn l3_run_history_rollback_verify_state_reset() {
         "dev",
         "sh",
         &["-c", "test \"$TOKEN\" = first"],
+        false,
     )
     .unwrap();
     assert_eq!(out.exit_code, 0, "child saw the injected TOKEN");
@@ -244,6 +245,7 @@ fn l3_run_history_rollback_verify_state_reset() {
         "dev",
         "sh",
         &["-c", "exit 7"],
+        false,
     )
     .unwrap();
     assert_eq!(out.exit_code, 7);
@@ -439,13 +441,15 @@ fn l4a_diff_edit_examples() {
         "dev",
         "sh",
         &["-c", "test \"$URL\" = pg://db1/x"],
+        false,
     )
     .unwrap();
     assert_eq!(out.exit_code, 0, "template expanded into the child env");
     write(&proj.join(".env"), "URL=pg://${TYPO}/x\n");
     sync::commit(&p2, &proj.display().to_string(), "dev").unwrap();
-    let err = latch_core::ops::consume::run(&p2, &proj.display().to_string(), "dev", "true", &[])
-        .unwrap_err();
+    let err =
+        latch_core::ops::consume::run(&p2, &proj.display().to_string(), "dev", "true", &[], false)
+            .unwrap_err();
     assert!(format!("{err}").contains("TYPO"), "{err}");
 }
 
@@ -470,7 +474,7 @@ fn s5_offline_cache_serves_when_origin_unreachable() {
     // staleness instead of hiding it.
     let out_file = tmp.path().join("offline-run.txt");
     let cmd = format!("printf '%s' \"$TOKEN\" > {}", out_file.display());
-    let run = latch_core::ops::consume::run(&pa, &cwd, "dev", "sh", &["-c", &cmd]).unwrap();
+    let run = latch_core::ops::consume::run(&pa, &cwd, "dev", "sh", &["-c", &cmd], false).unwrap();
     assert_eq!(run.exit_code, 0);
     assert!(run.stale, "outage must surface as a stale notice");
     assert_eq!(std::fs::read_to_string(&out_file).unwrap(), "cached");

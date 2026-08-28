@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.2.0 — 2026-08-28
+
+### Added (D10 — via mini-round, requested by the homelab project)
+- `latch cat <file> --env <env>`: decrypt exactly one env file to
+  stdout, nothing on disk. Raw by default (byte-identical to the
+  committed file); `--expand` resolves `${VAR}` references strictly
+  against the whole project/environment. Content on stdout, notices on
+  stderr — built for programmatic consumers.
+
+### Changed (D11 — via mini-round, after a scan of real-world usage)
+- `latch run` (and `cat --expand`) no longer silently lets the last
+  file win when the same variable appears in two files with different
+  values: that is now a hard error naming the variable and both files.
+  Pass `--last-wins` to deliberately accept the alphabetically last
+  file's value (the old behaviour, now opt-in). Duplicates with the
+  SAME value keep merging silently — nothing is lost there.
+
+### Fixed
+- FEATURES.md claimed template expansion happened "at pull/run";
+  `pull` never expanded and must not (it restores files exactly as
+  committed). Documentation corrected (D11b).
+
 ## 2.1.0 — 2026-08-28
 
 ### Added (D9 — via mini-round on the frozen feature list)
