@@ -126,8 +126,15 @@ Wipe local latch state for a project; remote and keys untouched.
 ### D1 · Automatic .env discovery — **Must**
 Find all .env files in the tree (ignore-aware). **The file list is shown
 before anything is encrypted** (no surprise pickups).
-- **Auto**: nested monorepo fixture → exact expected set; .gitignore'd
-  fixtures excluded; list-before-encrypt asserted in output.
+- **Auto**: nested monorepo fixture → exact expected set; list-before-encrypt
+  asserted in output; exclusion behaviour is D8's.
+
+> **Amendment 2026-08-28 (mini-round, D1/D8).** The original acceptance
+> criterion required `.gitignore`'d fixtures to be EXCLUDED. That was
+> wrong and shipped as a live bug: every project gitignores `.env`, so
+> discovery skipped exactly the files latch manages and `latch commit`
+> reported "0 file(s)" as success. Exclusions now come from `.latchignore`
+> and a built-in directory list only — never from git. See D8.
 
 ### D2 · Path flattening — **Must**
 Nested paths ↔ flat repo names, collision-free, reversible.
@@ -154,6 +161,29 @@ consistent exit codes, and homelab-style error messages **with a remedy
 line** on every failure.
 - **Auto**: CLI surface snapshot test (help texts); every error type
   carries a remedy (exhaustive match test).
+
+### D8 · `.latchignore` — **Must** *(added 2026-08-28 by mini-round)*
+latch's own exclusion file, gitignore format including negations, read
+only by latch. `.gitignore` is never consulted (see the D1 amendment).
+Without any file, a built-in list is always skipped: `.git`, `.latch`,
+`node_modules`, `target`, `vendor`, `.venv`, `venv` — otherwise the first
+commit in a Node project offers dozens of third-party `.env` files. The
+list is a floor, not a cage: a negation in the project-root `.latchignore`
+(`!vendor/`) lifts an entry. `latch init` leaves a commented starter file
+so the mechanism is discoverable in the project itself. `latch status
+--no-ignore` lists what the rules are hiding (view only — a commit still
+respects them), and finding zero env files prints a warning naming the
+directory, the rules and that flag instead of reporting success.
+- **Auto** (`d8_ignore_tests.rs`, real filesystem + real git — the mock
+  file backend has no ignore semantics, which is why ~90 green tests
+  missed the bug): gitignored `.env`/`.env.*`/`api/.env` still found; a
+  parent repo's `.gitignore` cannot hide a subproject's `.env`;
+  `.latchignore` excludes what it names; the built-in dirs are pruned;
+  `!vendor/` lifts one; `discover_all` sees everything while normal
+  discovery is unchanged; the secrets clone listing is never filtered;
+  `latch init` writes the starter file and never overwrites an existing
+  one. `.env.sample` joins `.env.example` as a template, not a secret
+  (v1 parity, restored in the same round).
 
 ## M · Machine & lifecycle
 

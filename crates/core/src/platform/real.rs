@@ -4,6 +4,7 @@
 
 use std::io::Write as _;
 
+use crate::discovery;
 use crate::error::LatchError;
 
 use super::{Env, Files, Keyring, ProcOutput, Prompt};
@@ -144,7 +145,14 @@ impl Files for RealFiles {
         if !std::path::Path::new(root).is_dir() {
             return Ok(Vec::new());
         }
-        Ok(Self::walk_impl(root))
+        Ok(Self::walk_impl(root, true))
+    }
+
+    fn walk_all(&self, root: &str) -> Result<Vec<String>, LatchError> {
+        if !std::path::Path::new(root).is_dir() {
+            return Ok(Vec::new());
+        }
+        Ok(Self::walk_impl(root, false))
     }
 
     fn remove_tree(&self, path: &str) -> Result<(), LatchError> {
@@ -175,15 +183,28 @@ impl Files for RealFiles {
 }
 
 impl RealFiles {
-    fn walk_impl(root: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        for entry in ignore::WalkBuilder::new(root)
+    fn walk_impl(root: &str, apply_ignores: bool) -> Vec<String> {
+        let mut builder = ignore::WalkBuilder::new(root);
+        builder
+            // Dotfiles ARE the payload here (.env); never hide them.
             .hidden(false)
-            .git_ignore(true)
+            // D8: git's opinion is the wrong one for secrets. Every
+            // project gitignores .env — honouring that made discovery
+            // skip exactly what latch manages (live bug 2026-08-28), and
+            // a parent repo's rules must not speak for a subproject
+            // either, hence parents(false).
+            .git_ignore(false)
             .git_global(false)
-            .build()
-            .flatten()
-        {
+            .git_exclude(false)
+            .ignore(false)
+            .parents(false);
+        if apply_ignores {
+            builder.add_custom_ignore_filename(discovery::IGNORE_FILE);
+            let lifted = root_ignore_matcher(root);
+            builder.filter_entry(move |entry| keep_entry(entry, &lifted));
+        }
+        let mut out = Vec::new();
+        for entry in builder.build().flatten() {
             if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 if let Ok(rel) = entry.path().strip_prefix(root) {
                     out.push(rel.display().to_string());
@@ -193,6 +214,35 @@ impl RealFiles {
         out.sort();
         out
     }
+}
+
+/// The project-root `.latchignore` as a matcher. It is consulted for one
+/// question only: does the project explicitly LIFT a built-in directory
+/// exclusion (`!vendor/`)? Ordinary rules — including those in nested
+/// `.latchignore` files — are applied by the walker itself; overriding a
+/// built-in is a project-level statement, so it lives at the root.
+fn root_ignore_matcher(root: &str) -> ignore::gitignore::Gitignore {
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(root);
+    builder.add(std::path::Path::new(root).join(discovery::IGNORE_FILE));
+    builder
+        .build()
+        .unwrap_or_else(|_| ignore::gitignore::Gitignore::empty())
+}
+
+fn keep_entry(entry: &ignore::DirEntry, lifted: &ignore::gitignore::Gitignore) -> bool {
+    // The root itself is never a candidate for pruning, and files are
+    // filtered by name later — this gate only prunes directories.
+    if entry.depth() == 0 || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+        return true;
+    }
+    let name = entry.file_name().to_str().unwrap_or("");
+    if !discovery::DEFAULT_IGNORED_DIRS.contains(&name) {
+        return true;
+    }
+    matches!(
+        lifted.matched_path_or_any_parents(entry.path(), true),
+        ignore::Match::Whitelist(_)
+    )
 }
 
 pub struct RealKeyring;

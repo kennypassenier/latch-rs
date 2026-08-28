@@ -65,6 +65,19 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
   honours the config override and checks `$PATH`; D5 bind refuses unknown
   names, rebind + pull works in a fresh dir, unbind keeps keys.
 
+### `d8_ignore_tests.rs` (9) — what discovery may and may not see
+- Against the **real filesystem and real git**, deliberately: the mock
+  file backend has no ignore semantics, so every other suite is blind
+  here — which is how the 2026-08-28 live bug (discovery honoured
+  `.gitignore` and therefore skipped every `.env`) survived ~90 green
+  tests. Gitignored `.env`, `.env.local` and `api/.env` are still found;
+  a parent repo's `.gitignore` cannot hide a subproject's `.env`;
+  `.latchignore` excludes what it names; the built-in directories are
+  pruned and `!vendor/` lifts one; `discover_all` (the `--no-ignore`
+  view) sees everything while normal discovery stays unchanged; the
+  secrets clone listing is never filtered; `latch init` writes the
+  starter file and never overwrites an existing one.
+
 ### core unit tests (9)
 - Template engine (expansion, cycles, strict errors), discovery/flattening
   (bijective, `__` refused), M5 tag/sums parsing.

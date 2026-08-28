@@ -78,6 +78,14 @@ impl Files for MockFiles {
         out.sort();
         Ok(out)
     }
+
+    /// The mock has no directories and no ignore files, so both walks are
+    /// the same list — ignore semantics are proven against the real
+    /// filesystem in `d8_ignore_tests.rs` (that gap is what let the
+    /// gitignore bug through ~90 green tests).
+    fn walk_all(&self, root: &str) -> Result<Vec<String>, LatchError> {
+        self.walk(root)
+    }
     fn remove_tree(&self, path: &str) -> Result<(), LatchError> {
         let prefix = format!("{}/", path.trim_end_matches('/'));
         self.files

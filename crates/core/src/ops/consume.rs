@@ -293,7 +293,9 @@ pub fn state(p: &Platform) -> Result<StateReport, LatchError> {
         projects.push(ProjectState {
             name: proj.name.clone(),
             dir: proj.dir.clone(),
-            dir_exists: !p.files.walk(&proj.dir)?.is_empty()
+            // "Is there anything here at all?" — an exclusion rule must
+            // not make a populated directory look gone (D8).
+            dir_exists: !p.files.walk_all(&proj.dir)?.is_empty()
                 || p.files.read(&format!("{}/.env", proj.dir))?.is_some(),
             key,
         });

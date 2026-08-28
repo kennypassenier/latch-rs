@@ -13,6 +13,9 @@ pub struct InitOutcome {
     pub project: String,
     pub created_key: bool,
     pub already_linked: bool,
+    /// A starter `.latchignore` was left in the project (D8). False when
+    /// the project already had one — an existing file is never touched.
+    pub created_ignore: bool,
 }
 
 pub fn run(p: &Platform, dir: &str, name: Option<String>) -> Result<InitOutcome, LatchError> {
@@ -24,6 +27,7 @@ pub fn run(p: &Platform, dir: &str, name: Option<String>) -> Result<InitOutcome,
                 project: existing.name.clone(),
                 created_key: false,
                 already_linked: true,
+                created_ignore: write_starter_ignore(p, dir)?,
             });
         }
         return Err(LatchError::other(
@@ -67,5 +71,15 @@ pub fn run(p: &Platform, dir: &str, name: Option<String>) -> Result<InitOutcome,
         project,
         created_key: !had_key,
         already_linked: false,
+        created_ignore: write_starter_ignore(p, dir)?,
     })
+}
+
+/// Leave a starter `.latchignore` in the project (D8) — exclusive create,
+/// so a project that already has one keeps its rules untouched.
+fn write_starter_ignore(p: &Platform, dir: &str) -> Result<bool, LatchError> {
+    p.files.try_create_exclusive(
+        &format!("{}/{}", dir, crate::discovery::IGNORE_FILE),
+        crate::discovery::IGNORE_TEMPLATE.as_bytes(),
+    )
 }

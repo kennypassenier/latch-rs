@@ -64,9 +64,18 @@ latch pull                # download + decrypt, all-or-nothing
 ```
 
 - `--env prod` on any of these switches environment (default `dev`).
-- Discovery (D1): `.env` and `.env.*` in the project tree, `.gitignore`
-  honoured, `.env.example` excluded. The file list is always printed — no
-  surprise pickups.
+- Discovery (D1/D8): `.env` and `.env.*` in the project tree; `.env.example`
+  and `.env.sample` are templates, not secrets. **`.gitignore` is not
+  consulted** — your `.env` belongs there and latch still has to find it.
+  Exclusions come from `.latchignore` (gitignore format, negations
+  included) plus a built-in list that is always skipped: `.git`, `.latch`,
+  `node_modules`, `target`, `vendor`, `.venv`, `venv`. Undo one of those
+  with a negation in the project-root `.latchignore`, e.g. `!vendor/`.
+  `latch init` leaves a commented starter file behind; commit it.
+  The file list is always printed — no surprise pickups.
+- Found nothing? `latch commit` says so with a warning instead of a silent
+  "0 file(s)", and `latch status --no-ignore` lists the env files the rules
+  are hiding (a view only — a commit still respects the rules).
 - Commit skips unchanged files (no no-op re-encryptions in history) and
   removes ciphertexts for locally-deleted files.
 - Pull is **all-or-nothing**: one corrupt file means nothing is written.

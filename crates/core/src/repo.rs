@@ -341,10 +341,13 @@ impl<'a> Repo<'a> {
     }
 
     /// List files under a prefix in the clone (relative to the prefix).
+    /// Unfiltered on purpose (D8): the clone is latch's own storage, so
+    /// an ignore file that wandered in must never be able to hide a
+    /// ciphertext — that would silently drop secrets from a pull.
     pub fn list(&self, prefix: &str) -> Result<Vec<String>, LatchError> {
         self.p
             .files
-            .walk(&format!("{}/{}", self.dir(), prefix))
+            .walk_all(&format!("{}/{}", self.dir(), prefix))
             .map(|v| v.into_iter().filter(|f| !f.starts_with(".git/")).collect())
     }
 }
