@@ -39,6 +39,99 @@ pub struct RunOutcome {
     pub stale: bool,
 }
 
+/// Key lookup shared by run and cat — absence reads the same either way.
+fn project_key(
+    p: &Platform,
+    proj_name: &str,
+    env_name: &str,
+) -> Result<keys::ProjectKey, LatchError> {
+    let store = CredStore::new(p);
+    keys::for_env(&store, proj_name, env_name)?.ok_or_else(|| {
+        LatchError::other(
+            format!(
+                "no key for project '{}' ({}) on this machine",
+                proj_name, env_name
+            ),
+            "clone your credentials here (latch clone) or restore a backup (latch key restore)",
+        )
+    })
+}
+
+/// Decrypt every env file of `<project>/<env>` and reduce them to the one
+/// flat namespace a process environment forces. D11: a name appearing in
+/// two files with the SAME value merges silently (nothing is lost); with
+/// DIFFERENT values it is a hard error naming both files, unless
+/// `last_wins` accepts the alphabetically last file's value. Within a
+/// single file the usual dotenv rule holds: a repeated name keeps the
+/// last assignment.
+fn merged_vars(
+    p: &Platform,
+    repo: &Repo,
+    key: &keys::ProjectKey,
+    proj_name: &str,
+    env_name: &str,
+    last_wins: bool,
+) -> Result<std::collections::BTreeMap<String, String>, LatchError> {
+    let prefix = format!("{}/{}", proj_name, env_name);
+    // name -> (value, source file) so a conflict can name both sides.
+    let mut merged: std::collections::BTreeMap<String, (String, String)> =
+        std::collections::BTreeMap::new();
+    for enc_name in repo.list(&prefix)? {
+        let Some(flat) = enc_name.strip_suffix(".enc") else {
+            continue;
+        };
+        let Some(sealed) = repo.read(&format!("{}/{}", prefix, enc_name))? else {
+            continue; // removed underneath us (concurrent reset) — skip
+        };
+        let plain = envelope::open(&key.key, &key.id, &sealed, &enc_name)?;
+        // W12: group members resolve to the group's stored content.
+        let plain = match crate::groups::parse_member(&plain) {
+            Some((gname, _)) => crate::groups::group_body(p, repo, env_name, &gname)?,
+            None => plain,
+        };
+        let text = String::from_utf8(plain).map_err(|_| LatchError::Format {
+            context: enc_name.clone(),
+            detail: "decrypted content is not utf-8".into(),
+        })?;
+        let source = crate::discovery::unflatten(flat);
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                let k = k.trim().to_string();
+                let v = v.trim().trim_matches('"').trim_matches('\'').to_string();
+                let previous = merged.get(&k).map(|(pv, pf)| (pv.clone(), pf.clone()));
+                match previous {
+                    None => {
+                        merged.insert(k, (v, source.clone()));
+                    }
+                    // Same file redefines the name: dotenv last-wins.
+                    Some((_, prev_f)) if prev_f == source => {
+                        merged.insert(k, (v, source.clone()));
+                    }
+                    Some((prev_v, _)) if prev_v == v => {} // nothing lost
+                    Some((_, prev_f)) => {
+                        if last_wins {
+                            merged.insert(k, (v, source.clone()));
+                        } else {
+                            return Err(LatchError::other(
+                                format!(
+                                    "variable '{}' has different values in {} and {}",
+                                    k, prev_f, source
+                                ),
+                                "rename it in one of the files, or pass --last-wins to keep the alphabetically last file's value",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(merged.into_iter().map(|(k, (v, _))| (k, v)).collect())
+}
+
 /// Decrypt the project's env straight from the clone into a child
 /// process's environment — nothing ever touches disk. The clone is
 /// refreshed best-effort; offline runs on the cache with a stale notice.
@@ -48,55 +141,17 @@ pub fn run(
     env_name: &str,
     program: &str,
     args: &[&str],
+    last_wins: bool,
 ) -> Result<RunOutcome, LatchError> {
     crate::discovery::validate_env(env_name)?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
     let refreshed = repo.refresh(false)?;
+    let key = project_key(p, &proj.name, env_name)?;
 
-    let store = CredStore::new(p);
-    let key = keys::for_env(&store, &proj.name, env_name)?.ok_or_else(|| {
-        LatchError::other(
-            format!(
-                "no key for project '{}' ({}) on this machine",
-                proj.name, env_name
-            ),
-            "clone your credentials here (latch clone) or restore a backup (latch key restore)",
-        )
-    })?;
-
-    let prefix = format!("{}/{}", proj.name, env_name);
-    let mut vars: Vec<(String, String)> = Vec::new();
-    for enc_name in repo.list(&prefix)? {
-        let Some(_flat) = enc_name.strip_suffix(".enc") else {
-            continue;
-        };
-        let Some(sealed) = repo.read(&format!("{}/{}", prefix, enc_name))? else {
-            continue; // removed underneath us (concurrent reset) — skip
-        };
-        let plain = envelope::open(&key.key, &key.id, &sealed, &enc_name)?;
-        // W12: group members resolve to the group's stored content.
-        let plain = match crate::groups::parse_member(&plain) {
-            Some((gname, _)) => crate::groups::group_body(p, &repo, env_name, &gname)?,
-            None => plain,
-        };
-        let text = String::from_utf8(plain).map_err(|_| LatchError::Format {
-            context: enc_name.clone(),
-            detail: "decrypted content is not utf-8".into(),
-        })?;
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some((k, v)) = line.split_once('=') {
-                let v = v.trim().trim_matches('"').trim_matches('\'');
-                vars.push((k.trim().to_string(), v.to_string()));
-            }
-        }
-    }
-    if vars.is_empty() {
+    let map = merged_vars(p, &repo, &key, &proj.name, env_name, last_wins)?;
+    if map.is_empty() {
         return Err(LatchError::other(
             format!("no secrets found for {}/{}", proj.name, env_name),
             "commit+push env files first, or check --env",
@@ -104,7 +159,6 @@ pub fn run(
     }
 
     // W7/AR13: expand ${VAR} references at use time, strictly.
-    let map: std::collections::BTreeMap<String, String> = vars.iter().cloned().collect();
     let expanded = crate::template::expand_all(&map)?;
     let vars: Vec<(String, String)> = expanded.into_iter().collect();
 
@@ -113,6 +167,86 @@ pub fn run(
     Ok(RunOutcome {
         exit_code,
         injected: vars.len(),
+        stale: !refreshed.is_current(),
+    })
+}
+
+// ── D10 · latch cat ─────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub struct CatOutcome {
+    pub content: Vec<u8>,
+    pub stale: bool,
+}
+
+/// Decrypt exactly one env file to memory — the zero-disk read for
+/// per-file consumers (the CLI streams it to stdout). Raw by default:
+/// byte-identical to what was committed. With `expand`, ${VAR} references
+/// are resolved strictly against the project-wide variable map, which is
+/// merged under the D11 rules (so `last_wins` applies there too).
+pub fn cat(
+    p: &Platform,
+    cwd: &str,
+    env_name: &str,
+    rel_path: &str,
+    expand: bool,
+    last_wins: bool,
+) -> Result<CatOutcome, LatchError> {
+    crate::discovery::validate_env(env_name)?;
+    let proj = project_for(p, cwd)?;
+    let repo = repo_handle(p)?;
+    repo.ensure()?;
+    let refreshed = repo.refresh(false)?;
+    let key = project_key(p, &proj.name, env_name)?;
+
+    let flat = crate::discovery::flatten(rel_path)?;
+    let enc_name = format!("{}.enc", flat);
+    let sealed = repo
+        .read(&format!("{}/{}/{}", proj.name, env_name, enc_name))?
+        .ok_or_else(|| {
+            LatchError::other(
+                format!("no file '{}' in {}/{}", rel_path, proj.name, env_name),
+                "latch status lists the tracked files — commit+push it first, or check the path and --env",
+            )
+        })?;
+    let plain = envelope::open(&key.key, &key.id, &sealed, &enc_name)?;
+    // W12: a group member resolves to the group's stored content.
+    let plain = match crate::groups::parse_member(&plain) {
+        Some((gname, _)) => crate::groups::group_body(p, &repo, env_name, &gname)?,
+        None => plain,
+    };
+
+    let content = if !expand {
+        plain
+    } else {
+        let text = String::from_utf8(plain).map_err(|_| LatchError::Format {
+            context: rel_path.to_string(),
+            detail: "decrypted content is not utf-8".into(),
+        })?;
+        let map = merged_vars(p, &repo, &key, &proj.name, env_name, last_wins)?;
+        let expanded = crate::template::expand_all(&map)?;
+        // Re-emit the file's own lines; only variable values change.
+        let mut out = String::with_capacity(text.len());
+        for line in text.lines() {
+            let trimmed = line.trim();
+            let key_of = trimmed
+                .split_once('=')
+                .filter(|_| !trimmed.is_empty() && !trimmed.starts_with('#'))
+                .map(|(k, _)| k.trim());
+            match key_of.and_then(|k| expanded.get(k).map(|v| (k, v))) {
+                Some((k, v)) => {
+                    out.push_str(k);
+                    out.push('=');
+                    out.push_str(v);
+                }
+                None => out.push_str(line),
+            }
+            out.push('\n');
+        }
+        out.into_bytes()
+    };
+    Ok(CatOutcome {
+        content,
         stale: !refreshed.is_current(),
     })
 }

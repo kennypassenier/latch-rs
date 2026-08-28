@@ -1,5 +1,6 @@
 //! W7 template expansion (AR13): `${VAR}` references resolved at USE time
-//! (run, or pull --render); the repo always stores the raw text. Strict by
+//! (run, or cat --expand); the repo always stores the raw text — pull
+//! restores files exactly as committed, without expansion. Strict by
 //! decision: an unresolved reference or a cycle is a hard error naming the
 //! variable — templates never fail silently.
 

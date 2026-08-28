@@ -109,6 +109,12 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
   as a Conflict op (and the deliberate force resolving it), history load,
   error mapping keeps the remedy, doctor snapshot.
 
+### `d10_d11_tests.rs` (3) — single-file cat + duplicate rules
+Real git. Raw `cat` byte-identical + plaintext-scan over latch home;
+`--expand` resolves cross-file references strictly (unresolved → error);
+duplicate names: same value merges, different values error naming both
+files, `--last-wins` keeps the alphabetically last.
+
 ### `d9_project_remove_tests.rs` (3) — project removal
 - E2E vs real git: remove sweeps every env's ciphertexts, other projects
   untouched, link+marker cleaned, keys KEPT and the kept key still opens

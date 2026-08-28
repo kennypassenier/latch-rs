@@ -104,6 +104,28 @@ Decrypts straight from the clone into the child's environment — nothing
 touches disk. Offline? The cached clone serves (S5) with a stale notice.
 The child's exit code is latch's exit code.
 
+A process environment is one flat namespace, so `run` merges every env
+file of the project into it. Since 2.2.0 (D11) that merge is honest
+about collisions: the same variable in two files with the **same** value
+merges silently, but **different** values are a hard error naming both
+files. Pass `--last-wins` to deliberately keep the alphabetically last
+file's value instead.
+
+### Read one file to stdout (D10)
+
+```
+latch cat web/.env
+latch cat mbtest/mailbox/.env --env prod --expand
+```
+
+Decrypts exactly one file to stdout — nothing on disk, no child process.
+The path is relative to the project root, whatever your cwd inside the
+project. Raw by default (byte-identical to what was committed);
+`--expand` resolves `${VAR}` references strictly against the whole
+project/environment (and then the D11 collision rules above apply).
+Content goes to stdout only; notices and errors go to stderr, so
+pipelines can consume the output as-is.
+
 ### Templates (W7, AR13)
 
 ```
@@ -111,8 +133,9 @@ DB_HOST=db.internal
 DATABASE_URL=postgres://user:pw@${DB_HOST}:5432/app
 ```
 
-`${VAR}` references expand **at use time only** (`latch run`) — the repo
-and pulled files keep the raw references, so round-trips never lose them.
+`${VAR}` references expand **at use time only** (`latch run` and
+`latch cat --expand`) — the repo and pulled files keep the raw
+references, so round-trips never lose them.
 Undefined references and cycles are hard errors naming the variable.
 
 ### Edit without touching disk (W11)

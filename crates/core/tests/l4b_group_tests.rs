@@ -250,6 +250,7 @@ fn groups_full_lifecycle() {
         "dev",
         "sh",
         &["-c", &cmd],
+        false,
     )
     .unwrap();
     assert_eq!(run.exit_code, 0);

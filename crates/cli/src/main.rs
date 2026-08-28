@@ -80,9 +80,29 @@ enum Command {
     Run {
         #[arg(long, default_value = "dev")]
         env: String,
+        /// When a variable has different values in two files, keep the
+        /// alphabetically last file's value instead of erroring (D11).
+        #[arg(long)]
+        last_wins: bool,
         /// The command and its arguments (after --).
         #[arg(trailing_var_arg = true, required = true)]
         command: Vec<String>,
+    },
+    /// Print one env file decrypted to stdout — nothing touches disk
+    /// (D10). Raw by default: byte-identical to what was committed.
+    Cat {
+        /// Path of the file inside the project (as `latch status` shows it).
+        file: String,
+        #[arg(long, default_value = "dev")]
+        env: String,
+        /// Resolve ${VAR} references against the whole project/env,
+        /// strictly — an unresolved reference is a hard error (W7).
+        #[arg(long)]
+        expand: bool,
+        /// With --expand: on a name clash with different values, keep the
+        /// alphabetically last file's value instead of erroring (D11).
+        #[arg(long)]
+        last_wins: bool,
     },
     /// List the versions of this project's secrets (S3).
     History,
@@ -408,10 +428,14 @@ fn main() {
                 );
             }
         }),
-        Command::Run { env, command } => {
+        Command::Run {
+            env,
+            last_wins,
+            command,
+        } => {
             let (prog, rest) = command.split_first().expect("clap requires at least one");
             let arg_refs: Vec<&str> = rest.iter().map(|s| s.as_str()).collect();
-            match latch_core::ops::consume::run(&platform, &cwd, &env, prog, &arg_refs) {
+            match latch_core::ops::consume::run(&platform, &cwd, &env, prog, &arg_refs, last_wins) {
                 Ok(out) => {
                     if out.stale {
                         eprintln!("(offline — using the cached clone)");
@@ -420,6 +444,24 @@ fn main() {
                 }
                 Err(e) => Err(e),
             }
+        }
+        Command::Cat {
+            file,
+            env,
+            expand,
+            last_wins,
+        } => {
+            latch_core::ops::consume::cat(&platform, &cwd, &env, &file, expand, last_wins).map(
+                |out| {
+                    if out.stale {
+                        eprintln!("(offline — using the cached clone)");
+                    }
+                    use std::io::Write;
+                    std::io::stdout()
+                        .write_all(&out.content)
+                        .expect("write to stdout");
+                },
+            )
         }
         Command::History => latch_core::ops::consume::history(&platform, &cwd).map(|entries| {
             for e in &entries {
