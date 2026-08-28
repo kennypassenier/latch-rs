@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "latch-cli"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1164,7 +1164,7 @@ dependencies = [
 
 [[package]]
 name = "latch-core"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "latch-ui"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "hex",
  "latch-core",

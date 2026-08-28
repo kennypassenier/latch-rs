@@ -281,12 +281,24 @@ along, other projects' keys never do.
 ### Project links (D5)
 
 ```
-latch project list
+latch project list                                  # EVERY project in the repo
 latch project bind myapp --dir ~/elsewhere/myapp   # link EXISTING project
 latch project unbind myapp                          # forget link; keys stay
+latch project remove oldapp                         # retire a project (D9)
 ```
 
-`bind` refuses unknown names (it never creates) — creation is `latch init`.
+`bind` refuses unknown names (it never creates) — creation is `latch
+init`. `list` is repo-wide: it shows every project in the secrets repo
+with its environments and marks which are linked on this machine — the
+unlinked ones are your removal candidates.
+
+`remove` deletes ALL of a project's ciphertexts from the repo (a normal
+commit+push — history stays) plus the local link. Interactively you must
+type the exact project name; headless requires `--yes`. Keys are KEPT by
+default so the git history stays readable; `--purge-keys` deletes them
+too — after that the history is unreadable forever, so take a `latch key
+backup` first. If the removed secrets must truly die, also rotate the
+underlying values at their services (the command reminds you).
 
 ### Self-update (M5) and path (M4)
 

@@ -242,9 +242,10 @@ Manage project↔directory links on this machine (D5)
 Usage: latch project [OPTIONS] <COMMAND>
 
 Commands:
-  list    Show every linked project
+  list    Every project in the secrets repo, marking which are linked here (D9)
   bind    Link an EXISTING project to a directory (default: here)
   unbind  Forget the link on this machine (keys and repo content stay)
+  remove  Remove a project from the secrets repo: all envs' ciphertexts, the local link and marker. Keys stay unless --purge-keys (D9)
   help    Print this message or the help of the given subcommand(s)
 
 Options:

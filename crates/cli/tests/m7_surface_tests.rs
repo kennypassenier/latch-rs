@@ -64,6 +64,7 @@ const SWEEP: &[&[&str]] = &[
     &["project", "list"],
     &["project", "bind", "nope"],
     &["project", "unbind", "nope"],
+    &["project", "remove", "nope"], // would-be typed-name confirm (D9)
     &["path"],
     &["ui"], // needs a terminal: must refuse, not garble
 ];
