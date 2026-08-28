@@ -161,7 +161,7 @@ enum Command {
 
 #[derive(clap::Subcommand)]
 enum ProjectAction {
-    /// Show every linked project.
+    /// Every project in the secrets repo, marking which are linked here (D9).
     List,
     /// Link an EXISTING project to a directory (default: here).
     Bind {
@@ -171,6 +171,18 @@ enum ProjectAction {
     },
     /// Forget the link on this machine (keys and repo content stay).
     Unbind { name: String },
+    /// Remove a project from the secrets repo: all envs' ciphertexts,
+    /// the local link and marker. Keys stay unless --purge-keys (D9).
+    Remove {
+        name: String,
+        /// Confirm non-interactively (required without a terminal).
+        #[arg(long)]
+        yes: bool,
+        /// Also delete the project's keys — the git history becomes
+        /// unreadable FOREVER. Take a key backup first (latch key backup).
+        #[arg(long)]
+        purge_keys: bool,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -535,14 +547,65 @@ fn main() {
         },
         Command::Ui => latch_ui::run(),
         Command::Project { action } => match action {
-            ProjectAction::List => latch_core::ops::project::list(&platform).map(|projects| {
-                if projects.is_empty() {
-                    println!("no projects linked on this machine :: latch init links one");
+            ProjectAction::List => match latch_core::ops::project::list_all(&platform) {
+                Ok(projects) => {
+                    if projects.is_empty() {
+                        println!("no projects in the secrets repo yet :: latch init + commit + push creates one");
+                    }
+                    for pr in &projects {
+                        let envs = if pr.envs.is_empty() {
+                            "(nothing pushed yet)".to_string()
+                        } else {
+                            pr.envs
+                                .iter()
+                                .map(|(e, n)| format!("{}({})", e, n))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        };
+                        match &pr.linked_dir {
+                            Some(dir) => println!("{:16} {:24} linked: {}", pr.name, envs, dir),
+                            None => println!("{:16} {:24} (not linked here)", pr.name, envs),
+                        }
+                    }
+                    Ok(())
                 }
-                for pr in projects {
-                    println!("{}  {}", pr.name, pr.dir);
+                // No repo configured / unreachable clone: fall back to the
+                // local links so the verb stays useful pre-login.
+                Err(_) => latch_core::ops::project::list(&platform).map(|projects| {
+                    for pr in projects {
+                        println!("{}  {}", pr.name, pr.dir);
+                    }
+                    println!("(repo not reachable — showing local links only)");
+                }),
+            },
+            ProjectAction::Remove {
+                name,
+                yes,
+                purge_keys,
+            } => {
+                if purge_keys {
+                    println!("⚠ --purge-keys also deletes the project's keys: the git history becomes unreadable forever. Take 'latch key backup' first if in doubt.");
                 }
-            }),
+                latch_core::ops::project::remove(&platform, &name, yes, purge_keys).map(|out| {
+                    println!(
+                        "✓ project '{}' removed — {} file(s) across {} env(s) deleted from the repo and pushed",
+                        out.name,
+                        out.removed_files,
+                        out.envs.len()
+                    );
+                    if out.was_linked {
+                        println!("  local link removed");
+                    }
+                    if out.purged_keys.is_empty() {
+                        println!("  keys kept (history stays readable) :: --purge-keys deletes them");
+                    } else {
+                        for k in &out.purged_keys {
+                            println!("  ✗ key slot {} deleted", k);
+                        }
+                    }
+                    println!("  ⚠ {}", out.rotation_tip);
+                })
+            }
             ProjectAction::Bind { name, dir } => {
                 let dir = dir.unwrap_or_else(|| cwd.clone());
                 latch_core::ops::project::bind(&platform, &name, &dir)

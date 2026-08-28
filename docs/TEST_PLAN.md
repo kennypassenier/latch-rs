@@ -96,6 +96,14 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
   as a Conflict op (and the deliberate force resolving it), history load,
   error mapping keeps the remedy, doctor snapshot.
 
+### `d9_project_remove_tests.rs` (3) — project removal
+- E2E vs real git: remove sweeps every env's ciphertexts, other projects
+  untouched, link+marker cleaned, keys KEPT and the kept key still opens
+  the git history; wrong typed name refuses with nothing changed;
+  headless without --yes is a hard error naming the flag, with --yes it
+  works; --purge-keys empties the key slots; repo-wide list shows
+  linked/unlinked correctly.
+
 ## Coverage measurement
 
 CI's `coverage` job runs `cargo llvm-cov --summary-only` over the three

@@ -218,6 +218,27 @@ keys, manifest consistent, without writing anything.
 clap-generated bash/zsh/fish completions.
 - **Auto**: generation succeeds for all three shells (snapshot).
 
+### D9 · Project removal + repo-wide listing — **Should**
+*(Added 2026-08-28 via mini-round — the Phase-2 list is frozen; this is
+the dated amendment. Chosen: tiered scope, typed-name confirmation,
+history untouched.)*
+`latch project remove <name>` retires a project everywhere the repo is
+concerned: every environment's ciphertexts (as a NORMAL commit+push —
+history stays, per AR2; the command prints the rotate-the-values tip),
+the local link and per-machine marker. Keys are kept by default so the
+git history stays readable; `--purge-keys` deletes them too (the CLI
+reminds about a K6 backup first). Confirmation: interactively the exact
+project name must be typed; headless requires an explicit `--yes` (M7).
+`latch project list` becomes repo-wide: every project in the secrets
+repo, marking which are linked locally — the removal candidates are
+exactly the unlinked ones the old listing hid.
+- **Auto**: E2E vs real git — remove empties the project's repo prefix,
+  other projects untouched, kept key still opens the history; wrong
+  typed name refuses with nothing changed; headless without --yes is a
+  hard error naming the flag; --purge-keys empties the key slots;
+  list shows an unlinked repo project.
+
+
 ### S5 · Local cache + offline pull/run — **Should**
 Every successful pull caches the ciphertexts locally; `latch run` and
 `pull --offline` keep working through outages with a loud "using cached

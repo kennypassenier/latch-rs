@@ -130,6 +130,19 @@ machine is leaving your control.
   `run` works from the cached clone without network (S5) — but the cache
   must have been pulled at least once.
 
+## R12 · Retire a project you no longer use
+
+```
+latch project list            # repo-wide: unlinked entries are candidates
+latch project remove <name>   # type the name to confirm
+```
+
+Keys are kept, so the git history stays readable if you ever need an old
+value back. Only when you are sure nothing in that history matters:
+`latch key backup` first, then `latch project remove <name> --purge-keys`.
+If the removed secrets are live anywhere (API keys, passwords), rotate
+those VALUES at their services — history keeps the old ciphertexts.
+
 ## R11 · Release a new latch version (maintainer)
 
 ### One-time signing setup (do this ONCE, before the first release)
