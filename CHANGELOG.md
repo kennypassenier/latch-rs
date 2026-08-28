@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.0 — 2026-08-28
+
+### Added (D9 — via mini-round on the frozen feature list)
+- `latch project remove <name>`: retire a project — every environment's
+  ciphertexts removed from the secrets repo as a normal commit+push
+  (history stays; the command prints the rotate-the-values tip), local
+  link and per-machine marker cleaned up. Keys are KEPT by default so
+  the git history stays readable; `--purge-keys` deletes them too after
+  a warning to take a key backup first. Interactive confirmation types
+  the exact project name; headless requires `--yes`.
+- `latch project list` is now repo-wide: every project in the secrets
+  repo with per-environment ciphertext counts, marking which are linked
+  on this machine — unlinked entries are the removal candidates the old
+  link-only listing could not show.
+
 ## 2.0.1 — 2026-08-28
 
 Bug-fix release. 2.0.0's discovery honoured `.gitignore`, so in any real
