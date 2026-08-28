@@ -1,9 +1,15 @@
-//! .env discovery (D1) and reversible path flattening (D2).
+//! .env discovery (D1/D8) and reversible path flattening (D2).
 //!
-//! Discovery finds `.env` and `.env.*` files in a project tree (gitignore
-//! honoured by the Files::walk adapter), excluding `.env.example` — those
-//! are the D3 *output*, never secret input. The list is surfaced to the
-//! user BEFORE anything is encrypted (D1 rule: no surprise pickups).
+//! Discovery finds `.env` and `.env.*` files in a project tree, excluding
+//! `.env.example` and `.env.sample` — those are the D3 *output*, never
+//! secret input. The list is surfaced to the user BEFORE anything is
+//! encrypted (D1 rule: no surprise pickups).
+//!
+//! Exclusions come from latch's own `.latchignore` plus the built-in
+//! directory list below — never from `.gitignore` (D8, amending D1). A
+//! `.env` is gitignored in every healthy project, which is the entire
+//! reason latch exists; honouring that file made discovery skip exactly
+//! the files it manages, silently (live bug, 2026-08-28).
 //!
 //! Flattening maps a nested relative path to a flat repo name and back,
 //! bijectively: `/` becomes `__`. To keep it reversible, paths that
@@ -14,27 +20,92 @@
 use crate::error::LatchError;
 use crate::platform::Files;
 
+/// latch's own exclusion file (D8), gitignore format down to the
+/// negations — but only latch reads it, so excluding a secret from git
+/// and excluding it from latch stay separate decisions.
+pub const IGNORE_FILE: &str = ".latchignore";
+
+/// Directories discovery never descends into, with or without a
+/// `.latchignore` (D8). Without this, the first commit in any Node
+/// project offers dozens of stray `.env` files from third-party
+/// packages. The list is a floor, not a cage: an explicit negation in
+/// the project-root `.latchignore` (`!vendor/`) lifts an entry.
+pub const DEFAULT_IGNORED_DIRS: &[&str] = &[
+    ".git",
+    ".latch",
+    "node_modules",
+    "target",
+    "vendor",
+    ".venv",
+    "venv",
+];
+
+/// The starter `.latchignore` that `latch init` leaves behind (D8), so
+/// the mechanism is discoverable in the project itself instead of only
+/// in the guide.
+pub const IGNORE_TEMPLATE: &str = "\
+# .latchignore — which files latch may NOT pick up (gitignore format).
+#
+# latch deliberately does NOT read .gitignore: your .env belongs there,
+# and latch still has to find it. This file is the latch-only equivalent.
+#
+# Always skipped, no rule needed:
+#   .git  .latch  node_modules  target  vendor  .venv  venv
+# Undo one of those with a negation, e.g.:
+#   !vendor/
+#
+# Examples:
+#   fixtures/          # never look in this directory
+#   .env.local         # never pick up this file
+";
+
 /// Is this filename a secrets env file?
 fn is_env_file(name: &str) -> bool {
     if name == ".env" {
         return true;
     }
     if let Some(rest) = name.strip_prefix(".env.") {
-        return rest != "example" && !rest.is_empty();
+        // Templates are the D3 output; encrypting them back as secrets
+        // is noise (v1 excluded both spellings, v2 had lost `.sample`).
+        return rest != "example" && rest != "sample" && !rest.is_empty();
     }
     false
 }
 
 /// Find all env files under `project_dir` (relative paths, sorted).
 pub fn discover(files: &dyn Files, project_dir: &str) -> Result<Vec<String>, LatchError> {
-    Ok(files
-        .walk(project_dir)?
+    Ok(env_files(files.walk(project_dir)?))
+}
+
+/// Discovery with every exclusion lifted — the `--no-ignore` diagnostic
+/// (D8). It shows what the rules are hiding; it never changes what a
+/// commit picks up.
+pub fn discover_all(files: &dyn Files, project_dir: &str) -> Result<Vec<String>, LatchError> {
+    Ok(env_files(files.walk_all(project_dir)?))
+}
+
+fn env_files(walked: Vec<String>) -> Vec<String> {
+    walked
         .into_iter()
         .filter(|rel| {
             let name = rel.rsplit('/').next().unwrap_or(rel);
             is_env_file(name)
         })
-        .collect())
+        .collect()
+}
+
+/// What to tell someone whose project yielded nothing (D8). Finding zero
+/// env files is almost always a mistake, and "0 file(s)" reported as
+/// success is how the 2026-08-28 bug stayed invisible — so the message
+/// names the directory, the rules in play and the way to look behind
+/// them (standing rules 11 and 12).
+pub fn no_files_hint(project_dir: &str) -> String {
+    format!(
+        "no env files found in {} — latch looks for .env and .env.* (never .env.example or .env.sample), always skips {}, and applies {} if present; run 'latch status --no-ignore' to see what the rules are hiding",
+        project_dir,
+        DEFAULT_IGNORED_DIRS.join(", "),
+        IGNORE_FILE
+    )
 }
 
 /// `api/.env` → `api__.env` (D2). Refuses `__` in the input.
@@ -107,6 +178,7 @@ mod tests {
         assert!(is_env_file(".env.local"));
         assert!(is_env_file(".env.production"));
         assert!(!is_env_file(".env.example"));
+        assert!(!is_env_file(".env.sample"));
         assert!(!is_env_file("env"));
         assert!(!is_env_file("config.env.example"));
         assert!(!is_env_file("notes.txt"));

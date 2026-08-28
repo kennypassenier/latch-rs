@@ -96,6 +96,7 @@ Usage: latch status [OPTIONS]
 Options:
       --env <ENV>        [default: dev]
       --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --no-ignore        Also list the env files the exclusion rules are hiding (D8). Shows only; a commit still respects the rules
   -h, --help             Print help
 
 ═══ latch run --help

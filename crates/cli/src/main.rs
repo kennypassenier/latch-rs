@@ -70,6 +70,10 @@ enum Command {
     Status {
         #[arg(long, default_value = "dev")]
         env: String,
+        /// Also list the env files the exclusion rules are hiding (D8).
+        /// Shows only; a commit still respects the rules.
+        #[arg(long)]
+        no_ignore: bool,
     },
     /// Run a command with secrets injected into its environment — nothing
     /// ever touches disk (W6). Works offline on the cached clone (S5).
@@ -341,6 +345,12 @@ fn main() {
                     }
                 );
             }
+            if out.created_ignore {
+                println!(
+                    "  wrote {} — commit it; it says what latch may not pick up",
+                    latch_core::discovery::IGNORE_FILE
+                );
+            }
         }),
         Command::Commit { env } => {
             latch_core::ops::sync::commit(&platform, &cwd, &env).map(|out| {
@@ -357,6 +367,14 @@ fn main() {
                     changed,
                     out.removed.len()
                 );
+                // D8: "0 file(s)" reported as success is how a project
+                // whose secrets were never stored still looks fine.
+                if out.files.is_empty() && out.removed.is_empty() {
+                    eprintln!(
+                        "\x1b[33mwarning:\x1b[0m {}",
+                        latch_core::discovery::no_files_hint(&cwd)
+                    );
+                }
             })
         }
         Command::Push { env, force } => latch_core::ops::sync::push(&platform, &cwd, &env, force)
@@ -763,8 +781,8 @@ fn main() {
                 "one-shot: latch clone --to user@host; manual: offer (there), create (here), apply (there)",
             )),
         },
-        Command::Status { env } => {
-            latch_core::ops::sync::status(&platform, &cwd, &env).map(|out| {
+        Command::Status { env, no_ignore } => {
+            latch_core::ops::sync::status(&platform, &cwd, &env).and_then(|out| {
                 use latch_core::ops::sync::FileState as S;
                 for (rel, state) in &out.entries {
                     let tag = match state {
@@ -775,9 +793,23 @@ fn main() {
                     };
                     println!("  {} {}", tag, rel);
                 }
-                if out.entries.is_empty() {
-                    println!("no env files found");
+                if no_ignore {
+                    // D8 diagnostic: everything discovery would have
+                    // found with no rules at all, minus what it did find.
+                    let seen: std::collections::BTreeSet<&str> =
+                        out.entries.iter().map(|(rel, _)| rel.as_str()).collect();
+                    let all = latch_core::discovery::discover_all(platform.files, &cwd)?;
+                    for rel in all.iter().filter(|r| !seen.contains(r.as_str())) {
+                        println!("  ignored   {}", rel);
+                    }
                 }
+                if out.entries.is_empty() {
+                    eprintln!(
+                        "\x1b[33mwarning:\x1b[0m {}",
+                        latch_core::discovery::no_files_hint(&cwd)
+                    );
+                }
+                Ok(())
             })
         }
     };
