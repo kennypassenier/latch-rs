@@ -24,8 +24,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.97"
           targets: ${{ matrix.target }}
       - name: Build
         run: cargo build --release -p latch-cli --target ${{ matrix.target }}

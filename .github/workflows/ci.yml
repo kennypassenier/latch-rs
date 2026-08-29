@@ -13,8 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.97"
           components: rustfmt, clippy
       - name: fmt
         run: cargo fmt -p latch-core -p latch-cli -p latch-ui -- --check
@@ -31,7 +32,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
       - name: build for Windows
         run: cargo build -p latch-core -p latch-cli -p latch-ui
 
@@ -40,6 +43,12 @@ jobs:
   # machine with an older toolchain months later.
   msrv:
     runs-on: ubuntu-latest
+    # rust-toolchain.toml pins the project to 1.97 and would silently
+    # override the 1.86 installed below, turning this job into a second
+    # copy of `gates`. RUSTUP_TOOLCHAIN outranks that file, so the MSRV
+    # check keeps checking the MSRV.
+    env:
+      RUSTUP_TOOLCHAIN: "1.86"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -55,8 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.97"
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: measure
