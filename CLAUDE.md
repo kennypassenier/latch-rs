@@ -12,11 +12,11 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 
 | Field | Value |
 |---|---|
-| Current phase | 7-10 · retro-fit pass (procedure formalized mid-project) |
-| Last completed gate | evaluation form 2026-08-12: all 11 findings → Close |
-| Next gate | approval form SCOPE/CLAUDE/INVENTORY; then tech-choice + critic mini-rounds; docs approval; release report ("Tag & release?" = Kenny's go); retro |
+| Current phase | COMPLETE — all 11 phases closed (Form 4 retro, 2026-08-29) |
+| Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
+| Next gate | none — only the deferred Windows runtime check remains (Kenny-gated) |
 | AFK mode | off |
-| Build state | released 2.0.0 on `main`; 2.0.1 prepared (D8 `.latchignore` fix, tag = Kenny's go), ~100 tests green, CI enforcing |
+| Build state | **v2.2.0 released** — tagged, signed, installed; D9 (2.1.0) + D10/D11 (2.2.0) shipped post-2.0; the homelab consumes `latch cat` (its D12) |
 
 ## Deferred to end-of-project (Kenny-gated)
 
