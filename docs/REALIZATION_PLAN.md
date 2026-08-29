@@ -73,6 +73,23 @@ pass, TEST_PLAN maintained throughout, legacy docs archived.
 
 55 automated tests green; clippy clean; CI enforcing.
 
+## Gate log (Phase 7 onward — standing rule 5)
+
+Retro-fitted 2026-08-29; earlier gates lived in CLAUDE.md's git
+history and the session transcripts.
+
+| Gate | Date | Kenny decided | Landed in |
+|---|---|---|---|
+| Evaluation form (retro-fit of phases 0-9) | 2026-08-12 | all 11 findings → Close | docs set reconstructed; CLAUDE.md history |
+| Form 3 · milestone report + docs + release | 2026-08-12 | approved; go for v2.0.0 | tag v2.0.0, signed release |
+| Mini-round D8 · .latchignore discovery | 2026-08-28 | own ignore file, never git's | FEATURES.md amendment; 2.0.1 |
+| Release 2.0.1 | 2026-08-28 | go (tag + sign) | tag v2.0.1, signed |
+| Mini-round D9 · project removal + repo-wide list | 2026-08-28 | tiered scope, typed-name confirm, history kept | FEATURES.md amendment; 2.1.0 |
+| Release 2.1.0 | 2026-08-28 | go (tag + sign) | tag v2.1.0, signed |
+| Mini-round D10/D11 · latch cat + duplicate rules | 2026-08-28/29 | D10 Must, raw + --expand; D11 error only on differing values (3 deep-dive rounds incl. real-repo scan) | FEATURES.md amendments; 2.2.0 |
+| Release report 2.2.0 | 2026-08-29 | RR1-RR3 agreed; RR4 = go | tag v2.2.0, signed |
+| Form 4 · retrospective | 2026-08-29 | R1, R2, R3, R6 adopted; R4 ecosystem entry confirmed | dev-procedure commit 2c486c1 + hook sweep |
+
 ## Standing rules (from L0, forever)
 1. Red CI blocks merge — no exceptions.
 2. Every live bug becomes a mocked test before the fix.
