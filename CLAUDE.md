@@ -51,12 +51,22 @@ gates — see the form outcome in this file's git history.
 
 ## Gates (enforced)
 
-Commits are blocked by `.claude/hooks/check-commit.sh` unless
-`.claude/hooks/gates.sh` passes (fmt + clippy -D warnings + full test
-suite over latch-core/cli/ui) and the message carries IDs in brackets
-(`[W12]`, `[L4b]`, `[meta]`). CI re-runs the same gates on every push;
-`main` has branch protection requiring the `gates` check, admins
-included. The legacy package is deliberately ungated (AR14).
+Two layers run the same two gates: `.claude/hooks/gates.sh` (fmt +
+clippy -D warnings + full test suite over latch-core/cli/ui) and IDs in
+brackets in the message (`[W12]`, `[L4b]`, `[meta]`).
+
+- **`.githooks/pre-commit` + `.githooks/commit-msg` — the primary gate**,
+  because git hooks are repo-scoped: they fire for every commit from any
+  session, terminal or tool. Activated with `git config core.hooksPath
+  .githooks` (local config, so a fresh clone repeats that one command —
+  documented for humans in the README and OPERATIONS_RUNBOOK R13).
+- `.claude/hooks/check-commit.sh` — PreToolUse hook on Bash: the same
+  two gates for sessions opened in this directory. A second layer, no
+  longer the only one (it was, until 2026-08-30).
+
+CI re-runs the same gates on every push; `main` has branch protection
+requiring the `gates` check, admins included. The legacy package is
+deliberately ungated (AR14).
 
 ## Hard rules for this repo
 

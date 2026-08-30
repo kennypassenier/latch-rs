@@ -51,6 +51,31 @@ cargo build --release -p latch-cli    # target/release/latch
 Later updates: `latch update` (checksum-verified, keeps the previous
 binary, refuses anything that doesn't provably run).
 
+## Development — enable the commit gates first
+
+The gates are enforced by git hooks in `.githooks/`, and `core.hooksPath`
+is **local config that a clone cannot carry**. So every fresh clone runs
+this one command before its first commit, or it has no enforcement at
+all and nothing will say so:
+
+```
+git config core.hooksPath .githooks
+```
+
+(`make install-hooks` does the same and marks the hooks executable.)
+
+From then on every commit in this repository — any session, any
+terminal, any tool — is refused unless `cargo fmt --check`, `cargo
+clippy --all-targets -D warnings` and the full test suite pass over
+`latch-core`/`latch-cli`/`latch-ui`, and the message names the feature
+IDs it implements (`[W12, AR9]`, `[meta]` for infrastructure). The
+frozen legacy package is deliberately ungated (AR14).
+
+The Claude Code hook in `.claude/settings.json` runs the same two gates,
+but only for sessions opened in this directory; the git hooks are the
+layer that holds everywhere else. Procedure: [OPERATIONS_RUNBOOK
+R13](docs/OPERATIONS_RUNBOOK.md).
+
 ## Documentation
 
 | Doc | What's in it |

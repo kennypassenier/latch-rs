@@ -143,6 +143,38 @@ value back. Only when you are sure nothing in that history matters:
 If the removed secrets are live anywhere (API keys, passwords), rotate
 those VALUES at their services — history keeps the old ciphertexts.
 
+## R13 · Enable the commit gates in a clone (maintainer, once per clone)
+
+Do this before the first commit in any fresh clone of this repository:
+
+```
+git config core.hooksPath .githooks     # or: make install-hooks
+git config --get core.hooksPath         # must print: .githooks
+```
+
+Why it needs saying out loud: `core.hooksPath` is **local** git config.
+It is not committed and a clone does not inherit it, so a clone without
+this command has no enforcement whatsoever — and nothing announces that.
+latch itself sat in exactly that state until 2026-08-30: `.githooks/`
+existed, `core.hooksPath` was never set, and every commit made from
+outside a Claude session in this directory passed unchecked.
+
+What the two hooks do once enabled:
+
+- `.githooks/pre-commit` runs `.claude/hooks/gates.sh` — `cargo fmt
+  --check`, `cargo clippy --all-targets -D warnings`, the full test
+  suite over `latch-core`/`latch-cli`/`latch-ui`, plus the check that
+  the tree did not change while the gates ran. The frozen legacy
+  package is deliberately ungated (AR14).
+- `.githooks/commit-msg` refuses a message without feature IDs in
+  brackets (`[W12, AR9]`; `[meta]` for pure infrastructure).
+
+Both fire for every commit from any session, terminal or tool. The
+Claude Code hook in `.claude/settings.json` runs the same two gates but
+only for sessions opened in this directory; it stays as a second layer.
+
+Bypassing (`git commit --no-verify`) is not part of any procedure here.
+
 ## R11 · Release a new latch version (maintainer)
 
 ### One-time signing setup (do this ONCE, before the first release)

@@ -48,9 +48,10 @@ ci-local:
 
 install-hooks:
 	@mkdir -p .githooks
-	@chmod +x .githooks/pre-commit
+	@chmod +x .githooks/pre-commit .githooks/commit-msg
 	@git config core.hooksPath .githooks
-	@echo "Git hooks installed. Commits now run local CI preflight via pre-commit."
+	@echo "Git hooks installed: pre-commit runs .claude/hooks/gates.sh,"
+	@echo "commit-msg requires feature IDs in the message."
 
 build: build-linux
 	@rm -f ./latch && ln -s target/debug/latch ./latch
