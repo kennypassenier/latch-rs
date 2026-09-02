@@ -54,6 +54,11 @@ enum Command {
         /// Make YOUR content the newest version (history is kept).
         #[arg(long)]
         force: bool,
+        /// Publish even though no key backup is recorded for this key
+        /// (D13). The choice is recorded and stays visible in
+        /// `latch state` until an escrow covers this generation.
+        #[arg(long)]
+        no_escrow: bool,
     },
     /// Download and decrypt this project's env files (W4), all-or-nothing.
     Pull {
@@ -397,7 +402,11 @@ fn main() {
                 }
             })
         }
-        Command::Push { env, force } => latch_core::ops::sync::push(&platform, &cwd, &env, force)
+        Command::Push {
+            env,
+            force,
+            no_escrow,
+        } => latch_core::ops::sync::push(&platform, &cwd, &env, force, no_escrow)
             .map(|out| match out {
                 latch_core::repo::PushOutcome::Pushed => println!("✓ pushed"),
                 latch_core::repo::PushOutcome::NothingToPush => {
@@ -500,6 +509,26 @@ fn main() {
                         }
                     }
                 }
+                // D14: the per-file lines say what is wrong with a file but
+                // never that files are GONE. Two sessions read the same
+                // output on 2026-09-02 and drew opposite conclusions — one
+                // counted 25 where there had been 38 and inferred a format
+                // change instead of a removal. One summary line settles it.
+                let (mut ok, mut nokey) = (0usize, 0usize);
+                for (_, st) in &out.entries {
+                    match st {
+                        V::Ok => ok += 1,
+                        V::NoKey { .. } => nokey += 1,
+                        _ => {}
+                    }
+                }
+                println!(
+                    "  — {} file(s) in the repository: {} ok, {} unreadable here ({} without a key)",
+                    out.entries.len(),
+                    ok,
+                    out.entries.len() - ok,
+                    nokey
+                );
                 if out.stale {
                     eprintln!("(offline — verified the cached clone)");
                 }
@@ -529,11 +558,47 @@ fn main() {
                     "project {:12} {} — key {}",
                     pr.name,
                     if pr.dir_exists { &pr.dir } else { "(dir missing!)" },
-                    match &pr.key {
-                        Some((src, generation)) => format!("gen {} ({:?})", generation, src),
-                        None => "MISSING".into(),
+                    match (&pr.key, pr.key_unreadable_bytes) {
+                        (Some((src, generation)), _) => format!("gen {} ({:?})", generation, src),
+                        // D14: something IS stored, it just is not a key.
+                        (None, Some(n)) => format!(
+                            "UNREADABLE — {} bytes stored where 34 are expected (hex written into a raw slot?) :: latch key restore <backup>, or latch clone from a machine that has it",
+                            n
+                        ),
+                        (None, None) => "MISSING — nothing stored here :: on Linux try 'keyctl get_persistent @s' first, the kernel keyring may still hold it".into(),
                     }
                 );
+                // D13: a key with no second copy is one wipe away from
+                // taking the secrets with it — so state says so, in the
+                // same breath as the key itself.
+                use latch_core::escrow::{EscrowStatus, FileState};
+                match &pr.escrow {
+                    Some(EscrowStatus::Recorded {
+                        generation,
+                        path_hint,
+                        file,
+                        ..
+                    }) => println!(
+                        "  escrow     : recorded for gen {} — {} ({})",
+                        generation,
+                        path_hint,
+                        match file {
+                            FileState::Matches => "file still there and unchanged",
+                            FileState::Differs =>
+                                "a DIFFERENT file is at that path now — check your escrow",
+                            FileState::Absent =>
+                                "not at that path on this machine, which is fine if you moved it off",
+                        }
+                    ),
+                    Some(EscrowStatus::SkippedOnPurpose { generation, .. }) => println!(
+                        "  escrow     : NONE for gen {} — deliberately skipped with --no-escrow :: 'latch key backup <file>' still fixes it",
+                        generation
+                    ),
+                    Some(EscrowStatus::None) => println!(
+                        "  escrow     : NONE — this key exists in one place only :: run 'latch key backup <file>'"
+                    ),
+                    None => {}
+                }
             }
         })
         }
@@ -752,15 +817,23 @@ fn main() {
                     for s in &b.slots {
                         println!("    {}", s);
                     }
+                    if !b.recorded.is_empty() {
+                        println!(
+                            "  escrow recorded for {} key(s) — 'latch push' is unblocked; the record itself reaches the repo with your next push",
+                            b.recorded.len()
+                        );
+                    }
                     if !b.skipped.is_empty() {
                         println!(
-                            "  ⚠ {} key(s) the repo expects are NOT on this machine and were skipped:",
+                            "  ⚠ {} key(s) the repo expects are NOT on this machine, so this backup does NOT cover them:",
                             b.skipped.len()
                         );
                         for s in &b.skipped {
-                            println!("    (skipped) {}", s);
+                            println!("    (not here) {}", s);
                         }
-                        println!("    back up from a machine that holds them for a complete escrow");
+                        println!("    if another machine holds them, back up there too (latch clone brings them here);");
+                        println!("    if no machine holds them any more, they are gone — the repo files sealed with them");
+                        println!("    cannot be opened again, and the fix is to re-create those secrets, not to keep looking");
                     }
                 })
             }

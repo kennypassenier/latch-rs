@@ -52,7 +52,7 @@ fn project_key(
                 "no key for project '{}' ({}) on this machine",
                 proj_name, env_name
             ),
-            "clone your credentials here (latch clone) or restore a backup (latch key restore)",
+            "clone your credentials here (latch clone) or restore a key backup (latch key restore). On Linux the keys live in the KERNEL keyring, which a new login session does not attach by itself: run 'keyctl get_persistent @s' and retry BEFORE concluding the key is gone — re-minting costs the project's history",
         )
     })
 }
@@ -398,6 +398,15 @@ pub struct ProjectState {
     pub dir: String,
     pub dir_exists: bool,
     pub key: Option<(Source, u16)>,
+    /// D13: what the repo knows about a second copy of this key. `None`
+    /// when there is no key or no clone to ask.
+    pub escrow: Option<crate::escrow::EscrowStatus>,
+    /// D14: a value IS stored for this project, but it is not a key —
+    /// how many bytes it holds. The classic case is 68 hex characters
+    /// written into a slot that wants 34 raw bytes: reporting that as
+    /// "MISSING" sends people hunting for a key that is right there
+    /// (found by the Almanac session, 2026-09-02).
+    pub key_unreadable_bytes: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -419,11 +428,25 @@ pub fn state(p: &Platform) -> Result<StateReport, LatchError> {
         .files
         .read(&format!("{}/repo/.git/HEAD", p.latch_home))?
         .is_some();
+    // Reading the clone needs no network; when it is absent the escrow
+    // story is simply unknown, which state reports rather than guesses.
+    let repo = repo_handle(p).ok().filter(|_| clone_exists);
     let mut projects = Vec::new();
     for proj in &config.projects {
-        let key = store
-            .get(&format!("key:{}", proj.name))?
-            .and_then(|(raw, src)| decode_key(&raw).map(|(generation, _)| (src, generation)));
+        let stored = store.get(&format!("key:{}", proj.name))?;
+        let key = stored
+            .as_ref()
+            .and_then(|(raw, src)| decode_key(raw).map(|(generation, _)| (*src, generation)));
+        let key_unreadable_bytes = match (&stored, &key) {
+            (Some((raw, _)), None) => Some(raw.len()),
+            _ => None,
+        };
+        let escrow = match (&repo, &key) {
+            (Some(r), Some((_, generation))) => {
+                crate::escrow::status(p, r, &proj.name, *generation).ok()
+            }
+            _ => None,
+        };
         projects.push(ProjectState {
             name: proj.name.clone(),
             dir: proj.dir.clone(),
@@ -432,6 +455,8 @@ pub fn state(p: &Platform) -> Result<StateReport, LatchError> {
             dir_exists: !p.files.walk_all(&proj.dir)?.is_empty()
                 || p.files.read(&format!("{}/.env", proj.dir))?.is_some(),
             key,
+            escrow,
+            key_unreadable_bytes,
         });
     }
     Ok(StateReport {

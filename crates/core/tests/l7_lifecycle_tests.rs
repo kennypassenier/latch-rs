@@ -358,7 +358,7 @@ fn bind_links_existing_project_and_pull_works_there() {
     std::fs::write(dir1.join(".env"), "X=1\n").unwrap();
     init::run(&pa, &dir1.display().to_string(), Some("solo".into())).unwrap();
     sync::commit(&pa, &dir1.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &dir1.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &dir1.display().to_string(), "dev", false, true).unwrap();
 
     // Unknown name refuses (bind never creates).
     let err = project::bind(&pa, "nope", "/tmp/x").unwrap_err();

@@ -1,5 +1,47 @@
 # Changelog
 
+## 2.3.0 — 2026-09-02
+
+### Added (D13 — via mini-round, after a real key loss)
+- latch now knows whether a second copy of a key exists. `latch key
+  backup` writes a record (`_escrow/<label>.json`: label, generation,
+  timestamp, the escrow file's sha256 — never key material) into the
+  local clone, which unblocks pushing immediately and reaches the remote
+  with the next push; publishing stays an explicit act. `latch state`
+  reports it per project and re-checks the fingerprint while the file is
+  still at its recorded path.
+
+### Changed — BEHAVIOUR (D13)
+- `latch push` refuses to publish while the key sealing that content has
+  no recorded escrow for its current generation: publishing is the moment
+  secrets come to depend on one key. Remedy is one command
+  (`latch key backup <file>`, safe to re-run). `--no-escrow` publishes
+  anyway and records that choice, which stays visible in `latch state`
+  until a real escrow covers the generation. A rotated key (K3) needs its
+  own escrow.
+  **Upgrading:** existing projects have no record yet, so the first push
+  after upgrading asks for one run of `latch key backup <file>`.
+
+### Fixed (D14 — both reported by the homelab session during recovery)
+- `latch key backup` no longer tells you to "back up from a machine that
+  holds them" when no machine holds them any more; it names both
+  branches, including the one where the keys are simply gone.
+- `latch project remove` only warns that the git history stays readable
+  when a key that can read it is actually present, and now removes the
+  WHOLE project prefix (a v1-era `manifest.json` at the project root used
+  to survive, leaving the project half-present on disk).
+- `latch state` distinguishes a stored-but-unreadable key (e.g. 68 hex
+  characters where 34 raw bytes belong) from no key at all, instead of
+  reporting both as `MISSING`.
+- The "no key on this machine" remedies name the kernel keyring:
+  `keyctl get_persistent @s` and retry before concluding a key is lost.
+  On Linux latch keys live in the kernel keyring (`linux-keyutils`), a
+  new login session does not attach the persistent one by itself, and it
+  expires after three days of no access — documented in
+  ARCHITECTURE_REFERENCE §4 and OPERATIONS_RUNBOOK R15.
+- `latch verify` prints a summary line naming how many files the
+  repository holds and how many are readable here.
+
 ## 2.2.0 — 2026-08-28
 
 ### Added (D10 — via mini-round, requested by the homelab project)

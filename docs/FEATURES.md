@@ -271,6 +271,73 @@ exactly the unlinked ones the old listing hid.
   hard error naming the flag; --purge-keys empties the key slots;
   list shows an unlinked repo project.
 
+### D13 · Escrow awareness: no publishing under a key with no second copy — **Must**
+*(Added 2026-09-02 by mini-round, after a system upgrade wiped the KDE
+keyring and took every latch key with it. Kenny's instruction: this must
+never happen again. Numbering note: latch skips D12 on purpose — the
+homelab project's D12 is its adoption of latch, and reusing the number
+between two projects that talk daily would confuse both.)*
+
+A keyring protects against being READ, not against being LOST, and latch
+had no concept of a second copy at all: it could not wait for one, could
+not check one, and reported `cred file: none` in a way that reads like a
+defect when nothing is wrong. K6 escrow was built, tested and never used,
+and nothing asked.
+- `latch key backup` now also RECORDS the escrow in the secrets repo at
+  `_escrow/<key label>.json` — label, generation, timestamp and the
+  escrow file's sha256. Never key material, never the passphrase. The
+  record lives in the repo because the repo survives the machine, which
+  is the failure being guarded against.
+- `latch push` REFUSES to publish while the key sealing that content has
+  no recorded escrow for its current generation. Publishing is the moment
+  secrets become dependent on a single key; that is where the gate
+  belongs, not at key creation (a fresh key has no escrow by definition).
+- `--no-escrow` publishes anyway AND records that decision, which
+  `latch state` keeps showing until a real escrow covers the generation —
+  an exception may be made, it may not become invisible.
+- `latch state` reports the escrow per project, and re-checks the
+  recorded fingerprint when the file is still at its recorded path.
+- A rotation (K3) mints a new generation, which needs its own escrow: the
+  old file cannot open what the new key seals.
+- **Auto**: push refuses naming key, generation, remedy and the flag;
+  backup records and unlocks it; `--no-escrow` stays visible in state;
+  a rotated generation is refused until re-escrowed; the record contains
+  no plaintext, key material or passphrase.
+
+### D14 · Error messages that stay true in the bad case — **Must**
+*(Added 2026-09-02, same mini-round; both cases reported by the homelab
+session while recovering.)* Two messages were correct for the ordinary
+situation and misleading exactly when someone was in trouble:
+`latch key backup` told the reader to "back up from a machine that holds
+them" when no such machine existed any more, and `latch project remove`
+urged rotating values whose history nobody could read, because the key
+had gone with the keyring. Both now distinguish the cases: the backup
+message names both branches (another machine has them → clone; nobody
+has them → they are gone and re-creating is the fix), and the removal
+note only warns about a readable history when a key that can read it is
+actually present.
+Three more of the same shape, found in the same recovery:
+- `latch state` reported a stored-but-undecodable value as `MISSING`,
+  indistinguishable from nothing stored. The classic cause is the
+  env-var form (68 hex characters) written into a slot that holds 34 raw
+  bytes. It now says how many bytes are there and what that usually
+  means.
+- The "no key on this machine" remedies now name the kernel keyring:
+  `keyctl get_persistent @s` and retry, BEFORE concluding a key is gone.
+  Two of four projects were re-minted on 2026-09-02 without anyone
+  looking there, and re-minting throws away the project's history.
+- `latch verify` prints a summary line (how many files the repo holds,
+  how many are readable). Its per-file lines say what is wrong with a
+  file but never that files are GONE, and two sessions read the same
+  output and drew opposite conclusions from it.
+- `latch project remove` removes the WHOLE project prefix. It filtered
+  on entries containing `/`, so a v1-era `manifest.json` at the project
+  root survived and left the project half-present while
+  `latch project list` already called it gone.
+- **Auto**: removal note flips with the key's presence; the removal
+  clears a root-level leftover; a stored non-key value reports its byte
+  count instead of MISSING.
+
 ### D10 · `latch cat` — single-file decrypt to stdout — **Must**
 *(Added 2026-08-28 by mini-round, on the homelab's request — the frozen
 list changes only this way. Kenny rated it Must.)* One env file of the

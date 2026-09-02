@@ -75,6 +75,7 @@ Options:
       --env <ENV>        [default: dev]
       --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
       --force            Make YOUR content the newest version (history is kept)
+      --no-escrow        Publish even though no key backup is recorded for this key (D13). The choice is recorded and stays visible in `latch state` until an escrow covers this generation
   -h, --help             Print help
 
 ═══ latch pull --help

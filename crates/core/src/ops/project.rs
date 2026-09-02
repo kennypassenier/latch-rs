@@ -3,6 +3,7 @@
 use crate::config::{Config, Project};
 use crate::credentials::CredStore;
 use crate::error::LatchError;
+use crate::keys;
 use crate::platform::Platform;
 
 // ── D5 · latch project list / bind / unbind ─────────────────────────────
@@ -148,6 +149,15 @@ pub fn list_all(p: &Platform) -> Result<Vec<RepoProject>, LatchError> {
 
 pub const REMOVE_ROTATION_TIP: &str = "git history keeps the removed ciphertexts readable with the kept key — if those secrets must truly die, rotate the underlying VALUES at their services";
 
+/// Shown INSTEAD of the rotation tip when no key for this project is left
+/// anywhere on this machine (reported by the homelab session, 2026-09-02,
+/// after removing a project whose key had gone with the wiped keyring):
+/// the generic tip urges a rotation round that would fix nothing, exactly
+/// when the reader is already in trouble. Same failure as an error whose
+/// remedy points at a machine that no longer exists — a message that is
+/// true in the ordinary case and misleading in the one that hurts.
+pub const REMOVE_NO_KEY_NOTE: &str = "no key for this project is left on this machine, so the removed ciphertexts in the git history cannot be opened by anyone here — nothing to rotate on their account";
+
 #[derive(Debug)]
 pub struct RemoveOutcome {
     pub name: String,
@@ -157,6 +167,9 @@ pub struct RemoveOutcome {
     pub purged_keys: Vec<String>,
     pub was_linked: bool,
     /// D9-D: printed by the shell so the history caveat is never silent.
+    /// The honest closing note: the rotation tip only when a key that can
+    /// actually still open the history is present, otherwise the note
+    /// saying the history is already unreadable.
     pub rotation_tip: &'static str,
 }
 
@@ -180,17 +193,21 @@ pub fn remove(
     // Destructive: must operate on FRESH content (same rule as rotate).
     repo.refresh(true)?;
 
-    let files: Vec<String> = repo
-        .list(name)?
-        .into_iter()
-        .filter(|f| f.contains('/'))
-        .collect();
+    // Everything the project owns in the repo, not only `<env>/<file>`
+    // entries: v1 left a `manifest.json` at the project root, and the
+    // `contains('/')` filter that derives environments used to skip it,
+    // so a removed project stayed half-present on disk while
+    // `latch project list` already called it gone (reported by the
+    // homelab session, 2026-09-02).
+    let files: Vec<String> = repo.list(name)?;
     if files.is_empty() {
         return Err(LatchError::other(
             format!("no project '{}' in the secrets repository", name),
             "latch project list shows what exists; a link without repo content is removed with 'latch project unbind'",
         ));
     }
+    // Environments still come from the `<env>/<file>` shape only — a
+    // root-level leftover names no environment.
     let mut envs: std::collections::BTreeSet<String> = Default::default();
     for rel in &files {
         if let Some((env, _)) = rel.split_once('/') {
@@ -226,6 +243,9 @@ pub fn remove(
         repo.remove(&format!("{}/{}", name, rel))?;
     }
     repo.push(&format!("remove project {}", name), false)?;
+    // git tracks no directories, so the emptied tree would stay behind in
+    // the clone and keep the project looking half-present.
+    p.files.remove_tree(&format!("{}/{}", repo.dir(), name))?;
 
     // Local cleanup: link + per-machine marker.
     let mut config = Config::load(p)?;
@@ -254,12 +274,20 @@ pub fn remove(
         }
     }
 
+    // Only warn about a readable history when a key that could read it
+    // still exists here — purging the keys, or never having had them,
+    // makes that warning false.
+    let key_remains = keys::get(&CredStore::new(p), name)?.is_some();
     Ok(RemoveOutcome {
         name: name.to_string(),
         removed_files: files.len(),
         envs: envs.into_iter().collect(),
         purged_keys: purged,
         was_linked,
-        rotation_tip: REMOVE_ROTATION_TIP,
+        rotation_tip: if key_remains {
+            REMOVE_ROTATION_TIP
+        } else {
+            REMOVE_NO_KEY_NOTE
+        },
     })
 }

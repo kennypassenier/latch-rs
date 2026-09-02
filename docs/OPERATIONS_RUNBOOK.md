@@ -90,7 +90,11 @@ latch key backup ~/latch-keys.bk
 Copy it somewhere **not on any latch machine** (printed, USB in a drawer,
 password-manager attachment). Re-take after every `key rotate`, new
 project, or new group. Without a backup and with all machines lost, the
-repository is permanently unreadable — by design.
+repository is permanently unreadable — by design, and on 2026-09-02 that
+stopped being theory.
+
+Since 2.3.0 this is no longer only advice: the backup is also RECORDED,
+and `latch push` refuses while a key has no record (D13, see R14).
 
 ## R7 · Update latch
 
@@ -174,6 +178,76 @@ Claude Code hook in `.claude/settings.json` runs the same two gates but
 only for sessions opened in this directory; it stays as a second layer.
 
 Bypassing (`git commit --no-verify`) is not part of any procedure here.
+
+## R14 · Key escrow: the second copy latch insists on (D13)
+
+Since 2.3.0 latch refuses to publish secrets sealed with a key that has
+no recorded backup. One command satisfies it, and it is safe to re-run:
+
+```
+latch key backup ~/latch-keys-<date>.latchbk
+latch state          # escrow: recorded for gen 1 — <path> (file still there)
+```
+
+What the record is: a note in the secrets repo at
+`_escrow/<key label>.json` — label, generation, timestamp, and the sha256
+of the escrow file. No key material, no passphrase. It lives in the repo
+because the repo is what survives losing this machine.
+
+What it is NOT: proof that your escrow file still exists. latch re-checks
+the fingerprint when the file is still at its recorded path and says so
+plainly; once you move the escrow off this machine — which you should —
+it reports "not at that path on this machine, which is fine if you moved
+it off". A guarantee latch cannot keep would be worse than an honest
+report.
+
+Rules worth knowing:
+- **A rotation needs a new escrow.** `latch key rotate` mints a new
+  generation and the old escrow cannot open what the new key seals, so
+  the next push asks again.
+- **`--no-escrow` exists and is recorded.** It publishes without an
+  escrow and leaves a line in `latch state` that stays until a real
+  escrow covers that generation. Use it for a throwaway, not as habit.
+- **Where the escrow belongs:** somewhere that is not this machine. The
+  homelab's now sits in three places of different kinds (workstation,
+  the Proxmox host's vault, and restic offsite). Three copies of one
+  passphrase-encrypted file is cheap; the alternative was losing
+  everything to a package upgrade.
+
+## R15 · Recover after losing every key (what 2026-09-02 taught)
+
+**Step 0, before anything else: check whether the keys are actually
+gone.** On Linux they live in the kernel keyring, and a fresh login
+session does not attach the persistent one by itself:
+
+```
+keyctl get_persistent @s        # attach it
+keyctl show                     # expect: user: keyring-rs:key:<project>@latch
+latch state                     # keys reappear if they were only detached
+```
+
+This costs ten seconds and it is the difference between "not linked" and
+"lost". On 2026-09-02 two of four projects were re-minted before anyone
+looked here, and re-minting threw away their history for nothing.
+
+If the credential store is genuinely wiped and no escrow exists, the
+ciphertexts in the repo cannot be opened by anyone, and re-minting is the
+only path.
+Full recipe, written from the homelab's successful recovery:
+`~/Projects/homelab/docs/deployment/HANDOVER_LATCH_RECOVERY.md`. The
+short version, in order:
+
+1. `latch login` (Kenny enters the PAT).
+2. Back up the ciphertext first: `cp -a ~/.latch/repo ~/.latch/repo.backup-<date>` — re-minting is one-way.
+3. `git check-ignore -v <path>/.env` before writing any plaintext into a working tree.
+4. Collect the plaintext from wherever it still runs (host vault, `EnvironmentFile`, a running container).
+5. `latch commit --env <env>` — it publishes only what is on disk, so check the removal list.
+6. Verify with `latch cat <file> --env <env>` BEFORE pushing.
+7. `latch push`, then shred the plaintext from the working tree.
+8. `latch key backup <file>` — which since 2.3.0 also records the escrow, and without which the push in step 7 refuses.
+
+What you lose by re-minting: the values survive, the history does not.
+`latch history` and `latch rollback` restart at generation 1.
 
 ## R11 · Release a new latch version (maintainer)
 
