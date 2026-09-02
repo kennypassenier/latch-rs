@@ -26,6 +26,17 @@ explicit "no keyring" switch for scratch runs. Deliberately left open
 rather than fixed in passing, because it changes what `key backup`
 means.
 
+**Someone is already waiting on this decision** (Homelab Rust, recorded
+there as F238, 2026-09-02). That project had a plan for its HOST daemon
+to write its own escrow as an extra copy beside the host-meta backup.
+They have blocked it in their own register until M3 is decided, for
+exactly this reason: on a machine that holds other latch credentials in
+its keyring, such a backup would sweep them into a file that was never
+meant to carry them. So M3 is not only latch hygiene — it gates a
+feature in another project, and whoever runs the round tells them the
+outcome. (Their HOST daemon does not use latch today at all; the CLIENT
+calls `latch cat` and nothing else.)
+
 ### M1 · Prove the escrow gate on a real key (D13)
 **Decided:** 2026-09-02 (mini-round after the keyring wipe).
 **Measured at:** the first time a real key on Kenny's machine is pushed
