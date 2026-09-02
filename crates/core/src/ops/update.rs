@@ -158,8 +158,13 @@ fn sum_for(sums: &str, asset: &str) -> Option<String> {
 /// Run the update state machine against `exe` (the running binary's
 /// managed path — see M4). `current_version` compares against the
 /// release tag (with or without a leading v).
-pub fn run(p: &Platform, current_version: &str, exe: &str) -> Result<UpdateOutcome, LatchError> {
-    run_with_pubkey(p, current_version, exe, RELEASE_PUBKEY)
+pub fn run(
+    p: &Platform,
+    current_version: &str,
+    exe: &str,
+    reinstall: bool,
+) -> Result<UpdateOutcome, LatchError> {
+    run_with_pubkey(p, current_version, exe, RELEASE_PUBKEY, reinstall)
 }
 
 /// The update state machine, with the trusted signing key injected. The
@@ -172,6 +177,7 @@ pub fn run_with_pubkey(
     current_version: &str,
     exe: &str,
     pubkey: &str,
+    reinstall: bool,
 ) -> Result<UpdateOutcome, LatchError> {
     let api = format!(
         "https://api.github.com/repos/{}/releases/latest",
@@ -185,7 +191,19 @@ pub fn run_with_pubkey(
     let latest = tag.trim_start_matches('v').to_string();
     // D4 downgrade guard: only ever move FORWARD. A `latest` tag moved
     // back to an older release must not "update" us down to it.
-    if !is_strictly_newer(&latest, current_version) {
+    //
+    // D15 (mini-round 2026-09-02): `--reinstall` lifts the "strictly
+    // newer" half of that guard and NOTHING else — an EQUAL version may
+    // be fetched again, an older one still may not. The case: a machine
+    // where latch was built from source runs the right version in bytes
+    // the release never produced, so it falls outside the signature
+    // chain, and `update` had no way to say "give me the release build
+    // of what I already have". Every other check — the signed manifest,
+    // the checksum, keeping the previous binary, proving the new one
+    // runs — applies unchanged.
+    let same_version = !is_strictly_newer(&latest, current_version)
+        && !is_strictly_newer(current_version, &latest);
+    if !is_strictly_newer(&latest, current_version) && !(reinstall && same_version) {
         return Ok(UpdateOutcome::UpToDate {
             version: current_version.trim_start_matches('v').to_string(),
         });

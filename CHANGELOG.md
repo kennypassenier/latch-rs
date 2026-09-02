@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.1 — 2026-09-02
+
+### Added (D15 — via mini-round, Kenny's question after the 2.3.0 release)
+- `latch update --reinstall` fetches and installs the release build of
+  the version you already run. It lifts the "strictly newer" half of the
+  downgrade guard and nothing else: an equal version may be fetched
+  again, an older one still may not, and every other gate (signed
+  manifest, checksum, previous binary kept, new binary proven to run)
+  applies unchanged. Without the flag an equal version still reports
+  "already current".
+  **Why:** a machine where latch was built from source runs the right
+  version in bytes the release workflow never produced, so those bytes
+  sit outside the signature chain — and `update` had no way to say
+  "give me the release build of what I already have". That is exactly
+  what happened on 2026-09-02 and had to be repaired by hand.
+
 ## 2.3.0 — 2026-09-02
 
 ### Added (D13 — via mini-round, after a real key loss)

@@ -169,7 +169,14 @@ enum Command {
     Path,
     /// Self-update from GitHub Releases — checksum-verified, previous
     /// binary kept, new binary proven to run before replacing (M5).
-    Update,
+    Update {
+        /// Fetch and install the release build of the version you
+        /// already run (D15). Use it when the installed binary was
+        /// built from source: same version, different bytes, outside
+        /// the signature chain. Never installs an OLDER release.
+        #[arg(long)]
+        reinstall: bool,
+    },
     /// Print shell completions (D7): bash, zsh or fish.
     Completions { shell: clap_complete::Shell },
     /// M2 machine clone: move credentials to another machine, E2E-encrypted.
@@ -752,23 +759,29 @@ fn main() {
                 }
             })
         }
-        Command::Update => {
+        Command::Update { reinstall } => {
             let exe = std::env::current_exe()
                 .map(|e| e.display().to_string())
                 .unwrap_or_else(|_| "latch".into());
             let exe = latch_core::ops::project::install_path(&platform, &exe)
                 .unwrap_or_else(|_| exe.clone());
-            latch_core::ops::update::run(&platform, env!("CARGO_PKG_VERSION"), &exe).map(|out| {
+            latch_core::ops::update::run(&platform, env!("CARGO_PKG_VERSION"), &exe, reinstall).map(
+                |out| {
                 match out {
                     latch_core::ops::update::UpdateOutcome::UpToDate { version } => {
                         println!("✓ already current ({})", version);
                     }
                     latch_core::ops::update::UpdateOutcome::Updated { from, to, previous } => {
-                        println!("✓ updated {} -> {}", from, to);
+                        if from == to {
+                            println!("✓ reinstalled {} from the signed release", to);
+                        } else {
+                            println!("✓ updated {} -> {}", from, to);
+                        }
                         println!("  previous binary kept at {}", previous);
                     }
                 }
-            })
+                },
+            )
         }
         Command::Completions { shell } => {
             use clap::CommandFactory;
