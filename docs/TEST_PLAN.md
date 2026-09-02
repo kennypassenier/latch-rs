@@ -114,6 +114,14 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
 kept as `.prev`) and is a no-op without the flag; an older release stays
 refused even with the flag, so the flag can never become a downgrade.
 
+### `d16_keyring_namespace_tests.rs` (3) — one home, one drawer
+The default home (and the default spelled out in `LATCH_HOME`) derives
+the plain service name; another home derives its own. The isolation
+itself runs against the REAL OS keyring in two scratch namespaces —
+never the machine's own — and prints "NOT PROVEN HERE" instead of
+passing quietly when no keyring is available. **Accepted limitation:**
+CI machines without a keyring exercise only the derivation.
+
 ### `d13_escrow_tests.rs` (4) — no publishing without a second copy
 Real git. Push refuses under a key with no recorded escrow (naming key,
 generation, remedy and flag) and nothing reaches the origin; `latch key

@@ -102,6 +102,11 @@ obvious from the phrase "OS keyring":
   (three days) on this machine. A key nobody touches for a long weekend
   can genuinely be gone.
 
+The keyring is also **machine-wide, not home-wide**, which `LATCH_HOME`
+did not say: until D16 every home read the same drawer, so a scratch
+home saw the machine's real keys. The namespace now follows the resolved
+home — default stays `latch`, anything else becomes `latch@<home>`.
+
 So the keyring is a convenience cache with a timer, and the durable
 copies are the encrypted credential file (this chain's middle tier) and
 the K6 escrow — which is why D13 makes publishing depend on an escrow

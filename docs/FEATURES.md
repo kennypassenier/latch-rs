@@ -271,6 +271,26 @@ exactly the unlinked ones the old listing hid.
   hard error naming the flag; --purge-keys empties the key slots;
   list shows an unlinked repo project.
 
+### D16 · The keyring namespace follows the latch home — **Must**
+*(Added 2026-09-02 by mini-round; queue item M3, found during the M2
+restore drill.)* `LATCH_HOME` promised a separate latch and delivered a
+separate half: config, clone and credential file moved, the OS keyring
+did not, because it is machine-wide and latch stored everything under
+one service name. So a scratch home could read — and escrow — the real
+credentials of the machine it ran on. It also touched every other verb:
+`state`, `key show` and `clone` all saw foreign keys under a scratch
+home; the backup was merely where it became a file.
+- The default home keeps the service name `latch`, so nothing anyone
+  has already stored moves; any other home gets `latch@<resolved home>`.
+- Resolved paths are compared, not "is the variable set", so
+  `LATCH_HOME=~/.latch` still means the ordinary drawer.
+- Measured before deciding: nothing in Kenny's ecosystem sets
+  `LATCH_HOME` today, so the change could not orphan a live key.
+- **Auto**: the default home (and the default spelled out) derives
+  `latch`; another home derives its own name; two homes provably cannot
+  read each other's slots against a REAL keyring, and that test says out
+  loud when no keyring is present rather than passing quietly.
+
 ### D15 · `latch update --reinstall` — **Should**
 *(Added 2026-09-02 by mini-round, from Kenny's question "kan ik niet
 gewoon latch update doen?" — the honest answer was "yes, except in the

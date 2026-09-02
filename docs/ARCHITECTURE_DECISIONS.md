@@ -89,6 +89,17 @@ TOML config in `~/.latch/` together with credentials, repo clone and cache
 — one dir that K6 backup and M2 clone can reason about. `LATCH_HOME` and
 an XDG-layout flag override for those who want it.
 
+*Amended 2026-09-02 (mini-round M3/D16).* The override moved everything
+that lives on disk and nothing that lives in the OS keyring, which is
+machine-wide: a second home read — and backed up — the credentials of
+the machine it ran on. A drill under a throwaway `LATCH_HOME` swept a
+live PAT into a scratch escrow file, and that is the honest failure of
+this decision as written, not of the backup verb. The keyring namespace
+now follows the resolved home: the default home keeps the plain service
+name `latch` (nothing already stored moves), any other home gets
+`latch@<home>`. Resolved paths are compared rather than "is LATCH_HOME
+set", so spelling the default out does not orphan the keys it names.
+
 ## W12 · File groups design (approved in full)
 - **Cycle (W12a)**: membership via first-line pragma
   `# latch:group=<name>`. Latch keeps a local baseline fingerprint per
