@@ -14,9 +14,9 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 |---|---|
 | Current phase | COMPLETE — reopened once by mini-round D13/D14 (2026-09-02, key loss) |
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
-| Next gate | release report for 2.3.0 (tag = Kenny's go); then the two open measurements in docs/PENDING_MINI_ROUNDS.md |
+| Next gate | none open; the queue holds M3 (LATCH_HOME does not isolate the OS keyring) and the deferred Windows runtime check |
 | AFK mode | off |
-| Build state | **v2.3.0 built** (escrow gate, D13/D14) — released after Kenny's go; 2.2.0 is the published version |
+| Build state | **v2.3.1 released + signed** (escrow gate D13/D14, update --reinstall D15); the installed binary is the signed release build |
 
 ## Deferred to end-of-project (Kenny-gated)
 
