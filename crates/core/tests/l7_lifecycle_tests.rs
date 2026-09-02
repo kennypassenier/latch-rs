@@ -92,6 +92,96 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 #[test]
+fn d15_reinstall_replaces_an_equal_version_but_never_an_older_one() {
+    // D15 (mini-round 2026-09-02): a machine where latch was built from
+    // source runs the right version in bytes the release never produced,
+    // so those bytes fall outside the signature chain — and `update` had
+    // no way to say "give me the release build of what I already have".
+    // --reinstall lifts the strictly-newer half of the downgrade guard
+    // and nothing else.
+    let rig = UpdateRig::new();
+    let local_build = b"LOCALLY-COMPILED-9.9.9".to_vec();
+    let release = b"NEW-BINARY-9.9.9".to_vec();
+    rig.files.seed("/usr/local/bin/latch", &local_build);
+    rig.script_release(
+        "v9.9.9",
+        &release,
+        &sha256_hex(&release),
+        SIG_NEW,
+        (0, "latch 9.9.9"),
+    );
+    let p = rig.platform();
+
+    // Without the flag an equal version is still "already current" — the
+    // ordinary behaviour must not change.
+    assert_eq!(
+        update::run_with_pubkey(&p, "9.9.9", "/usr/local/bin/latch", TEST_PUBKEY, false).unwrap(),
+        update::UpdateOutcome::UpToDate {
+            version: "9.9.9".into()
+        }
+    );
+    assert_eq!(
+        p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
+        local_build,
+        "nothing was touched"
+    );
+
+    // With it, the release build replaces the local one — through every
+    // other gate unchanged (signed manifest, checksum, previous binary
+    // kept, new binary proven to run).
+    let out =
+        update::run_with_pubkey(&p, "9.9.9", "/usr/local/bin/latch", TEST_PUBKEY, true).unwrap();
+    assert_eq!(
+        out,
+        update::UpdateOutcome::Updated {
+            from: "9.9.9".into(),
+            to: "9.9.9".into(),
+            previous: "/usr/local/bin/latch.prev".into()
+        }
+    );
+    assert_eq!(
+        p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
+        release,
+        "now running the signed release bytes"
+    );
+    assert_eq!(
+        p.files.read("/usr/local/bin/latch.prev").unwrap().unwrap(),
+        local_build,
+        "the local build is kept, so rolling back is one move"
+    );
+}
+
+#[test]
+fn d15_reinstall_still_refuses_an_older_release() {
+    // The half of the guard that stays: a `latest` tag moved backwards
+    // must not install itself, flag or no flag.
+    let rig = UpdateRig::new();
+    let current = b"CURRENT-9.9.9".to_vec();
+    let older = b"OLD-RELEASE".to_vec();
+    rig.files.seed("/usr/local/bin/latch", &current);
+    rig.script_release(
+        "v2.0.0",
+        &older,
+        &sha256_hex(&older),
+        SIG_NEW,
+        (0, "latch 2.0.0"),
+    );
+    let p = rig.platform();
+
+    assert_eq!(
+        update::run_with_pubkey(&p, "9.9.9", "/usr/local/bin/latch", TEST_PUBKEY, true).unwrap(),
+        update::UpdateOutcome::UpToDate {
+            version: "9.9.9".into()
+        },
+        "--reinstall must never become a downgrade"
+    );
+    assert_eq!(
+        p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
+        current
+    );
+}
+
+#[test]
 fn update_happy_path_keeps_previous_binary() {
     let rig = UpdateRig::new();
     let old = b"OLD-BINARY".to_vec();
@@ -106,7 +196,8 @@ fn update_happy_path_keeps_previous_binary() {
     );
 
     let p = rig.platform();
-    let out = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap();
+    let out =
+        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY, false).unwrap();
     assert_eq!(
         out,
         update::UpdateOutcome::Updated {
@@ -146,8 +237,8 @@ fn update_aborts_on_checksum_mismatch() {
     );
 
     let p = rig.platform();
-    let err =
-        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap_err();
+    let err = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY, false)
+        .unwrap_err();
     assert!(format!("{err}").contains("checksum"), "{err}");
     assert_eq!(
         p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
@@ -167,8 +258,8 @@ fn update_aborts_when_new_binary_does_not_run() {
     rig.script_release("v9.9.9", &new, &sha256_hex(&new), SIG_BROKEN, (127, ""));
 
     let p = rig.platform();
-    let err =
-        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap_err();
+    let err = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY, false)
+        .unwrap_err();
     assert!(format!("{err}").contains("does not run"), "{err}");
     assert_eq!(
         p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
@@ -190,7 +281,8 @@ fn update_reports_up_to_date() {
     rig.proc
         .respond("releases/latest", 0, br#"{"tag_name": "v2.0.0"}"#, b"");
     let p = rig.platform();
-    let out = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap();
+    let out =
+        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY, false).unwrap();
     assert_eq!(
         out,
         update::UpdateOutcome::UpToDate {
@@ -219,8 +311,8 @@ fn d4_wrong_signature_is_refused() {
         (0, "latch 9.9.9"),
     );
     let p = rig.platform();
-    let err =
-        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap_err();
+    let err = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY, false)
+        .unwrap_err();
     assert!(format!("{err}").contains("does NOT verify"), "{err}");
     assert_eq!(
         p.files.read("/usr/local/bin/latch").unwrap().unwrap(),
@@ -244,7 +336,7 @@ fn d4_placeholder_key_fails_closed() {
     );
     let p = rig.platform();
     // The real entry point uses the baked-in (placeholder) key.
-    let err = update::run(&p, "2.0.0", "/usr/local/bin/latch").unwrap_err();
+    let err = update::run(&p, "2.0.0", "/usr/local/bin/latch", false).unwrap_err();
     assert!(
         format!("{err}").contains("no valid release-signing key")
             || format!("{err}").contains("does NOT verify"),
@@ -264,7 +356,8 @@ fn d4_downgrade_is_refused() {
     rig.proc
         .respond("releases/latest", 0, br#"{"tag_name": "v1.0.0"}"#, b"");
     let p = rig.platform();
-    let out = update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY).unwrap();
+    let out =
+        update::run_with_pubkey(&p, "2.0.0", "/usr/local/bin/latch", TEST_PUBKEY, false).unwrap();
     assert_eq!(
         out,
         update::UpdateOutcome::UpToDate {

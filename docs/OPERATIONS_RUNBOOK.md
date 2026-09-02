@@ -100,10 +100,21 @@ and `latch push` refuses while a key has no record (D13, see R14).
 
 ```
 latch update       # gates: manifest checksum + the new binary must run
+latch update --reinstall   # same version, but the SIGNED release build
 latch --version
 # regret it?
 mv $(latch path | awk 'NR==1{print $3}').prev $(latch path | awk 'NR==1{print $3}')
 ```
+
+`--reinstall` exists for one situation (D15): a machine where latch was
+built from source runs the right version in bytes the release workflow
+never produced, so the signature covers nothing that is actually on
+disk. Plain `update` cannot see that — it compares version numbers —
+and reports "already current". The flag lifts only the
+strictly-newer check; an older release is still refused, and the signed
+manifest, checksum, `.prev` copy and run-probe all apply as usual. On
+Kenny's workstation this is the normal case after a release, because
+development installs with `cargo install --path`.
 
 ## R8 · Move the secrets repository
 

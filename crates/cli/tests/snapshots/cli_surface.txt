@@ -271,6 +271,7 @@ Usage: latch update [OPTIONS]
 
 Options:
       --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
+      --reinstall        Fetch and install the release build of the version you already run (D15). Use it when the installed binary was built from source: same version, different bytes, outside the signature chain. Never installs an OLDER release
   -h, --help             Print help
 
 ═══ latch completions --help

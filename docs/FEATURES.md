@@ -271,6 +271,21 @@ exactly the unlinked ones the old listing hid.
   hard error naming the flag; --purge-keys empties the key slots;
   list shows an unlinked repo project.
 
+### D15 · `latch update --reinstall` — **Should**
+*(Added 2026-09-02 by mini-round, from Kenny's question "kan ik niet
+gewoon latch update doen?" — the honest answer was "yes, except in the
+one case that had just occurred".)* `update` compares version NUMBERS,
+so a binary built from source is indistinguishable from the release
+build of the same version, and the signature chain quietly does not
+cover the bytes actually running. `--reinstall` lifts only the
+strictly-newer half of the D4 downgrade guard; an older release is
+still refused with the flag set, and every other gate is unchanged.
+↳ D4 = the signed self-update: checksum-verified, previous binary kept,
+new binary proven to run before replacing.
+- **Auto**: an equal version reinstalls with the flag and reports
+  "already current" without it; an older release is refused even with
+  the flag; the replaced binary is kept as `.prev`.
+
 ### D13 · Escrow awareness: no publishing under a key with no second copy — **Must**
 *(Added 2026-09-02 by mini-round, after a system upgrade wiped the KDE
 keyring and took every latch key with it. Kenny's instruction: this must

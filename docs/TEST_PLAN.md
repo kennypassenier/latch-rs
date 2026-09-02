@@ -109,6 +109,11 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
   as a Conflict op (and the deliberate force resolving it), history load,
   error mapping keeps the remedy, doctor snapshot.
 
+### `l7_lifecycle_tests.rs` — two D15 cases added
+`--reinstall` replaces an equal version with the release build (previous
+kept as `.prev`) and is a no-op without the flag; an older release stays
+refused even with the flag, so the flag can never become a downgrade.
+
 ### `d13_escrow_tests.rs` (4) — no publishing without a second copy
 Real git. Push refuses under a key with no recorded escrow (naming key,
 generation, remedy and flag) and nothing reaches the origin; `latch key
