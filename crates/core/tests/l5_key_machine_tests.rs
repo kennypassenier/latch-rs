@@ -88,10 +88,10 @@ fn k_series_rotation_env_keys_show_backup() {
 
     // Same project, two environments.
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
     write(&proj.join(".env"), "TOKEN=prod-secret\n");
     sync::commit(&pa, &cwd, "prod").unwrap();
-    sync::push(&pa, &cwd, "prod", false).unwrap();
+    sync::push(&pa, &cwd, "prod", false, true).unwrap();
 
     // ── K5 · show hides by default, reveals only on demand ──────────────
     let info = keyops::show(&pa, &cwd, None, false).unwrap();
@@ -111,7 +111,7 @@ fn k_series_rotation_env_keys_show_backup() {
     assert_eq!(rot.new_generation, 2);
     assert_eq!(rot.reencrypted.len(), 2, "both envs rode the project key");
     assert!(rot.caveat.contains("history"), "K3 caveat in the output");
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     // New ciphertexts must REFUSE the old key (wrong generation).
     let repo_file = format!("{}/repo/myapp/dev/.env.enc", a.home);
@@ -132,7 +132,7 @@ fn k_series_rotation_env_keys_show_backup() {
     let rot = keyops::rotate(&pa, &cwd, Some("prod")).unwrap();
     assert_eq!(rot.label, "myapp.prod");
     assert_eq!(rot.reencrypted, vec!["myapp/prod/.env.enc".to_string()]);
-    sync::push(&pa, &cwd, "prod", false).unwrap();
+    sync::push(&pa, &cwd, "prod", false, true).unwrap();
     let ver = consume::verify(&pa, None).unwrap();
     assert!(ver
         .entries
@@ -210,9 +210,9 @@ fn m2_clone_scoped_codes_and_expiry() {
     init::run(&pa, &alpha.display().to_string(), None).unwrap();
     init::run(&pa, &beta.display().to_string(), None).unwrap();
     sync::commit(&pa, &alpha.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &alpha.display().to_string(), "dev", false, true).unwrap();
     sync::commit(&pa, &beta.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &beta.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &beta.display().to_string(), "dev", false, true).unwrap();
 
     // Target machine T (mock clock pinned to real time: offer TTL is
     // judged against the offer file's REAL mtime).
@@ -269,7 +269,7 @@ fn m2_ssh_wrapper_drives_remote_verbs() {
     write(&proj.join(".env"), "X=1\n");
     init::run(&pa, &proj.display().to_string(), None).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // A REAL target machine provides the offer; the wrapper's ssh calls
     // are mocked to hand that offer over and accept the apply.

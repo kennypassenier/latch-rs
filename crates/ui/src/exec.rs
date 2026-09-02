@@ -98,7 +98,7 @@ pub fn exec(cmd: Cmd, m: &Model, p: &Platform, ui_cwd: &str) -> Msg {
             }
             Cmd::Push { force } => {
                 let dir = need_dir()?;
-                match sync::push(p, &dir, &m.env, force) {
+                match sync::push(p, &dir, &m.env, force, false) {
                     Ok(latch_core::repo::PushOutcome::Pushed) => {
                         Msg::Op(OpResult::Done("✓ pushed".into()))
                     }

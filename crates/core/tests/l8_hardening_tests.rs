@@ -76,7 +76,7 @@ fn s1_pull_refuses_path_escaping_repo_entry() {
     std::fs::write(proj.join(".env"), "TOKEN=legit\n").unwrap();
     init::run(&pa, &proj.display().to_string(), None).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // Attacker with repo access clones, plants a copy of the legit
     // ciphertext under an escaping name, pushes.
@@ -190,7 +190,7 @@ fn d6_pull_skips_a_file_removed_underneath_it() {
     std::fs::write(proj.join(".env"), "X=1\n").unwrap();
     init::run(&pa, &proj.display().to_string(), None).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
     std::fs::remove_file(proj.join(".env")).unwrap();
     let pulled = sync::pull(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
     assert_eq!(pulled.written, vec![".env"]);
@@ -214,7 +214,7 @@ fn b1_interrupted_rotation_recovers() {
     let cwd = proj.display().to_string();
     init::run(&pa, &cwd, None).unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     let store = CredStore::new(&pa);
     // Simulate the crash window: mint gen2 and preserve gen1 as #prev,
@@ -249,7 +249,7 @@ fn b1_interrupted_rotation_recovers() {
     );
     let _ = ver;
     // The content survived intact.
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
     std::fs::remove_file(proj.join(".env")).unwrap();
     sync::pull(&pa, &cwd, "dev", false, true).unwrap();
     assert_eq!(
@@ -271,7 +271,7 @@ fn d2c_rotate_refuses_when_repo_is_ahead() {
     let cwd = proj.display().to_string();
     init::run(&pa, &cwd, None).unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     // Machine B takes the key, rotates, pushes gen2.
     let store_a = CredStore::new(&pa);
@@ -284,7 +284,7 @@ fn d2c_rotate_refuses_when_repo_is_ahead() {
     init::run(&pb, &proj_b.display().to_string(), Some("app".into())).unwrap();
     sync::pull(&pb, &proj_b.display().to_string(), "dev", false, false).unwrap();
     keyops::rotate(&pb, &proj_b.display().to_string(), None).unwrap();
-    sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+    sync::push(&pb, &proj_b.display().to_string(), "dev", false, true).unwrap();
 
     // Machine A (still gen1) tries to rotate → must refuse with a clear
     // message, not mint a colliding gen2.
@@ -310,7 +310,7 @@ fn d2d_group_key_rotates() {
     init::run(&pa, &alpha.display().to_string(), None).unwrap();
     init::run(&pa, &beta.display().to_string(), None).unwrap();
     sync::commit(&pa, &alpha.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &alpha.display().to_string(), "dev", false, true).unwrap();
 
     let store = CredStore::new(&pa);
     let before = latch_core::groups::key_get(&store, "shared", "dev")
@@ -369,7 +369,7 @@ fn b2_force_preserves_remote_only_files() {
     let cwd = proj.display().to_string();
     init::run(&pa, &cwd, None).unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     // Machine B adds a SECOND file and pushes.
     let store_a = CredStore::new(&pa);
@@ -384,14 +384,14 @@ fn b2_force_preserves_remote_only_files() {
     std::fs::create_dir_all(proj_b.join("api")).unwrap();
     std::fs::write(proj_b.join("api/.env"), "B=2\n").unwrap();
     sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap();
-    sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+    sync::push(&pb, &proj_b.display().to_string(), "dev", false, true).unwrap();
 
     // Machine A (stale) changes its file and force-pushes.
     std::fs::write(proj.join(".env"), "A=99\n").unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    let err = sync::push(&pa, &cwd, "dev", false).unwrap_err();
+    let err = sync::push(&pa, &cwd, "dev", false, true).unwrap_err();
     assert!(format!("{err}").contains("S4"), "{err}");
-    sync::push(&pa, &cwd, "dev", true).unwrap();
+    sync::push(&pa, &cwd, "dev", true, true).unwrap();
 
     // B's file must STILL exist at the origin after A's force (B2).
     let probe = tmp.path().join("probe");
@@ -419,7 +419,7 @@ fn d1a_pull_preserves_unpushed_commit() {
     let cwd = proj.display().to_string();
     init::run(&pa, &cwd, None).unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     // Second machine pushes ahead so our next push is rejected, leaving
     // us clean-but-ahead (the D1a trap).
@@ -435,12 +435,12 @@ fn d1a_pull_preserves_unpushed_commit() {
     std::fs::create_dir_all(proj_b.join("api")).unwrap();
     std::fs::write(proj_b.join("api/.env"), "X=1\n").unwrap();
     sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap();
-    sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+    sync::push(&pb, &proj_b.display().to_string(), "dev", false, true).unwrap();
 
     // A commits locally, push rejected → clean-but-ahead.
     std::fs::write(proj.join(".env"), "V=2\n").unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    assert!(sync::push(&pa, &cwd, "dev", false).is_err());
+    assert!(sync::push(&pa, &cwd, "dev", false, true).is_err());
 
     // A pull now MUST report diverged and MUST NOT lose our commit.
     let out = sync::pull(&pa, &cwd, "dev", false, true).unwrap();
@@ -449,7 +449,7 @@ fn d1a_pull_preserves_unpushed_commit() {
         "pull must flag divergence, not claim fresh (D1b)"
     );
     // Our unpushed V=2 survives (force publishes it, keeping B's file).
-    sync::push(&pa, &cwd, "dev", true).unwrap();
+    sync::push(&pa, &cwd, "dev", true, true).unwrap();
     let probe = tmp.path().join("probe");
     std::process::Command::new("git")
         .args(["clone", "-q", &origin])
@@ -474,7 +474,7 @@ fn d1d_commit_refuses_wiping_everything() {
     let cwd = proj.display().to_string();
     init::run(&pa, &cwd, None).unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     // Fresh machine, links the project, commits in the EMPTY dir before
     // pulling → must refuse instead of staging a full wipe.
@@ -523,7 +523,7 @@ fn b4_cross_machine_group_divergence_is_caught() {
     init::run(&pa, &alpha.display().to_string(), None).unwrap();
     init::run(&pa, &beta.display().to_string(), None).unwrap();
     sync::commit(&pa, &alpha.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &alpha.display().to_string(), "dev", false, true).unwrap();
 
     // Machine B takes both project keys + the group key, pulls, edits the
     // group, pushes.
@@ -540,14 +540,14 @@ fn b4_cross_machine_group_divergence_is_caught() {
     sync::pull(&pb, &alpha_b.display().to_string(), "dev", false, false).unwrap();
     std::fs::write(alpha_b.join(".env"), "# latch:group=shared\nK=from-b\n").unwrap();
     sync::commit(&pb, &alpha_b.display().to_string(), "dev").unwrap();
-    sync::push(&pb, &alpha_b.display().to_string(), "dev", false).unwrap();
+    sync::push(&pb, &alpha_b.display().to_string(), "dev", false, true).unwrap();
 
     // Machine A edits the SAME group differently, still on the old base,
     // and pushes → must get the explicit divergence error, not a plain S4
     // that would silently drop one side.
     std::fs::write(alpha.join(".env"), "# latch:group=shared\nK=from-a\n").unwrap();
     sync::commit(&pa, &alpha.display().to_string(), "dev").unwrap();
-    let err = sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap_err();
+    let err = sync::push(&pa, &alpha.display().to_string(), "dev", false, true).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("diverged between machines"), "{msg}");
     assert!(msg.contains("group resolve"), "remedy names the fix: {msg}");
@@ -637,7 +637,7 @@ fn d5_wrong_code_consumes_the_offer() {
     std::fs::write(proj.join(".env"), "X=1\n").unwrap();
     init::run(&pa, &proj.display().to_string(), None).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // Target makes an offer; source creates a payload.
     let t = Machine::new(tmp.path(), "home-t", &origin);
@@ -714,7 +714,7 @@ fn k1_backup_reports_skipped_keys() {
     std::fs::write(proj.join(".env"), "X=1\n").unwrap();
     init::run(&pa, &proj.display().to_string(), None).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // Second machine has the PROJECT key but not the PAT: its backup must
     // flag the pat as skipped rather than claim completeness.

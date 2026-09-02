@@ -23,6 +23,7 @@ impl Machine {
         let home = base.join(name).display().to_string();
         let env = MockEnv::default();
         env.set("LATCH_PASSPHRASE", "test-pp");
+        env.set("LATCH_BACKUP_PASSPHRASE", "escrow-pp");
         let m = Self {
             home,
             env,
@@ -92,6 +93,11 @@ fn exec_maps_every_command_to_core_faithfully() {
         "{msg:?}"
     );
     update(&mut m, msg);
+    // D13: the TUI pushes through the same gate as the CLI — no silent
+    // exemption for the shell you happen to use — so the escrow has to
+    // exist here just as it would for a person.
+    latch_core::ops::keyops::backup(&pa, &tmp.path().join("escrow.bk").display().to_string())
+        .unwrap();
     let msg = exec(Cmd::Push { force: false }, &m, &pa, "/");
     assert!(
         matches!(&msg, Msg::Op(OpResult::Done(s)) if s.contains("pushed")),
@@ -150,7 +156,7 @@ fn exec_maps_every_command_to_core_faithfully() {
     latch_core::ops::sync::pull(&pb, &proj_b.display().to_string(), "dev", false, false).unwrap();
     std::fs::write(proj_b.join(".env"), "TOKEN=from-b\n").unwrap();
     latch_core::ops::sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap();
-    latch_core::ops::sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+    latch_core::ops::sync::push(&pb, &proj_b.display().to_string(), "dev", false, true).unwrap();
 
     // Our local edit → commit → push must surface as a Conflict op.
     let msg = exec(Cmd::Commit, &m, &pa, "/");

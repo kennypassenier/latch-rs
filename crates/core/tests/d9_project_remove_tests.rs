@@ -80,11 +80,11 @@ fn seed(tmp: &tempdir::TempDir, origin: &str) -> (Machine, String, String) {
     init::run(&pa, &app.display().to_string(), None).unwrap();
     init::run(&pa, &other.display().to_string(), None).unwrap();
     sync::commit(&pa, &app.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &app.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &app.display().to_string(), "dev", false, true).unwrap();
     sync::commit(&pa, &app.display().to_string(), "prod").unwrap();
-    sync::push(&pa, &app.display().to_string(), "prod", false).unwrap();
+    sync::push(&pa, &app.display().to_string(), "prod", false, true).unwrap();
     sync::commit(&pa, &other.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &other.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &other.display().to_string(), "dev", false, true).unwrap();
     (a, app.display().to_string(), other.display().to_string())
 }
 

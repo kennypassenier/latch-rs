@@ -78,6 +78,21 @@ latch pull                # download + decrypt, all-or-nothing
   are hiding (a view only — a commit still respects the rules).
 - Commit skips unchanged files (no no-op re-encryptions in history) and
   removes ciphertexts for locally-deleted files.
+- **`push` needs a recorded key backup (D13, since 2.3.0).** Publishing is
+  the moment your secrets start depending on one key, so latch refuses
+  while that key has no escrow on record:
+
+  ```
+  ✗ no key backup is recorded for 'myapp' (generation 1) — publishing now
+    would put secrets in the repo that only this machine can open
+    :: run 'latch key backup <file>' first ...
+  ```
+
+  One run of `latch key backup <file>` fixes it for good (safe to re-run,
+  and a rotation asks again because the old escrow cannot open what the
+  new key seals). `--no-escrow` publishes anyway and records that choice,
+  which `latch state` keeps showing until a real escrow covers it. See
+  OPERATIONS_RUNBOOK R14 for where an escrow belongs.
 - Pull is **all-or-nothing**: one corrupt file means nothing is written.
 - Pull refuses to overwrite locally-modified files without `--overwrite`
   (S4); push refuses when the remote has newer work — `latch pull` first,

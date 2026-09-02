@@ -399,6 +399,15 @@ pub struct BackupOutcome {
     /// Candidate slots the repo expects but this machine doesn't hold —
     /// the backup is complete only for what this machine can see (K1).
     pub skipped: Vec<String>,
+    /// D13: key labels + generations whose escrow is now RECORDED in the
+    /// secrets repo, so latch can see the second copy exists.
+    pub recorded: Vec<(String, u16)>,
+    /// The record is written into the LOCAL clone only. Publishing is an
+    /// explicit act in latch (`latch push`), and pushing from here would
+    /// sweep along whatever the user committed but deliberately has not
+    /// pushed yet — `repo.push` stages the whole tree. So the record
+    /// travels with the next push instead of surprising anyone.
+    pub record_in_clone: bool,
 }
 
 /// K6: one passphrase-encrypted file holding every credential this
@@ -433,10 +442,47 @@ pub fn backup(p: &Platform, dest: &str) -> Result<BackupOutcome, LatchError> {
     out.extend_from_slice(&salt);
     out.extend_from_slice(&sealed);
     p.files.write_atomic(dest, &out)?;
+
+    // D13: record THAT this escrow exists — in the repo, because the repo
+    // is the one thing that survives losing this machine, which is the
+    // failure being guarded against. Never key material: label,
+    // generation, timestamp and the file's digest. Best-effort by design:
+    // a backup asked for on an offline machine must still be made.
+    let digest = crate::escrow::fingerprint(&out);
+    let now = p.clock.now_unix();
+    let mut recorded: Vec<(String, u16)> = Vec::new();
+    let mut record_in_clone = false;
+    if let Ok(repo) = repo_handle(p) {
+        if repo.ensure().is_ok() {
+            for slot in &slots {
+                let Some(label) = slot.strip_prefix("key:") else {
+                    continue;
+                };
+                // A rotation's previous generation is kept only to finish
+                // re-encrypting; escrowing it would claim cover for a key
+                // that is on its way out.
+                if label.ends_with("#prev") {
+                    continue;
+                }
+                let Some((raw, _)) = store.get(slot)? else {
+                    continue;
+                };
+                if raw.len() < 2 {
+                    continue;
+                }
+                let generation = u16::from_le_bytes([raw[0], raw[1]]);
+                crate::escrow::note(&repo, label, generation, &digest, dest, now)?;
+                recorded.push((label.to_string(), generation));
+                record_in_clone = true;
+            }
+        }
+    }
     Ok(BackupOutcome {
         path: dest.to_string(),
         slots,
         skipped,
+        recorded,
+        record_in_clone,
     })
 }
 

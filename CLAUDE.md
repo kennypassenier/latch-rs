@@ -12,11 +12,11 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 
 | Field | Value |
 |---|---|
-| Current phase | COMPLETE — all 11 phases closed (Form 4 retro, 2026-08-29) |
+| Current phase | COMPLETE — reopened once by mini-round D13/D14 (2026-09-02, key loss) |
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
-| Next gate | none — only the deferred Windows runtime check remains (Kenny-gated) |
+| Next gate | release report for 2.3.0 (tag = Kenny's go); then the two open measurements in docs/PENDING_MINI_ROUNDS.md |
 | AFK mode | off |
-| Build state | **v2.2.0 released** — tagged, signed, installed; D9 (2.1.0) + D10/D11 (2.2.0) shipped post-2.0; the homelab consumes `latch cat` (its D12) |
+| Build state | **v2.3.0 built** (escrow gate, D13/D14) — released after Kenny's go; 2.2.0 is the published version |
 
 ## Deferred to end-of-project (Kenny-gated)
 

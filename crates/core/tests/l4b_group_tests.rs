@@ -101,7 +101,7 @@ fn groups_full_lifecycle() {
         read(&beta.join(".env")),
         "# latch:group=media\nSHARED_TOKEN=abc\nDB=postgres\n"
     );
-    sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &alpha.display().to_string(), "dev", false, true).unwrap();
 
     // The origin stores content ONCE (in _groups) and only ciphertext.
     let probe = tmp.path().join("probe");
@@ -129,7 +129,7 @@ fn groups_full_lifecycle() {
     let out = sync::commit(&pa, &beta.display().to_string(), "dev").unwrap();
     assert!(out.groups[0].changed);
     assert!(read(&alpha.join(".env")).contains("SHARED_TOKEN=xyz"));
-    sync::push(&pa, &beta.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &beta.display().to_string(), "dev", false, true).unwrap();
 
     // Status: members read Clean against the group content.
     let st = sync::status(&pa, &alpha.display().to_string(), "dev").unwrap();
@@ -164,7 +164,7 @@ fn groups_full_lifecycle() {
     let rep = groups::resolve(&pa, &alpha.display().to_string(), "dev", "media", ".env").unwrap();
     assert!(rep.changed);
     assert!(read(&beta.join(".env")).contains("SHARED_TOKEN=alpha-wins"));
-    sync::push(&pa, &alpha.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &alpha.display().to_string(), "dev", false, true).unwrap();
 
     // ── W12c: a NEW member with foreign content must not silently win ───
     let gamma = tmp.path().join("work-a/gamma");
@@ -185,7 +185,7 @@ fn groups_full_lifecycle() {
     write(&gamma.join(".env"), "# latch:group=media\n");
     sync::commit(&pa, &gamma.display().to_string(), "dev").unwrap();
     assert!(read(&gamma.join(".env")).contains("SHARED_TOKEN=alpha-wins"));
-    sync::push(&pa, &gamma.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &gamma.display().to_string(), "dev", false, true).unwrap();
 
     // Route 3: adopt — a new member's content BECOMES the group content.
     let delta = tmp.path().join("work-a/delta");
@@ -202,7 +202,7 @@ fn groups_full_lifecycle() {
             "{proj:?}"
         );
     }
-    sync::push(&pa, &delta.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &delta.display().to_string(), "dev", false, true).unwrap();
 
     // ── group list: every member visible, key held ──────────────────────
     let infos = groups::list(&pa, "dev").unwrap();
@@ -264,7 +264,7 @@ fn groups_full_lifecycle() {
     );
     let out = sync::commit(&pb, &alpha_b.display().to_string(), "dev").unwrap();
     assert!(out.groups[0].changed, "B's edit adopted as group content");
-    sync::push(&pb, &alpha_b.display().to_string(), "dev", false).unwrap();
+    sync::push(&pb, &alpha_b.display().to_string(), "dev", false, true).unwrap();
 
     // Back on A: pull takes B's version into every member.
     let pulled = sync::pull(&pa, &alpha.display().to_string(), "dev", false, true).unwrap();

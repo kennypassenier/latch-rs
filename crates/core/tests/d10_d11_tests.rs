@@ -100,7 +100,7 @@ fn seed(tmp: &tempdir::TempDir, origin: &str) -> (Machine, String) {
     );
     init::run(&pa, &proj.display().to_string(), Some("stacks".into())).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
     (a, proj.display().to_string())
 }
 
@@ -150,7 +150,7 @@ fn cat_expand_resolves_across_files_strictly() {
     let proj_path = std::path::Path::new(&proj);
     write(&proj_path.join("web/.env"), "API=${NOWHERE}/v1\n");
     sync::commit(&pa, &proj, "dev").unwrap();
-    sync::push(&pa, &proj, "dev", false).unwrap();
+    sync::push(&pa, &proj, "dev", false, true).unwrap();
     let err = consume::cat(&pa, &proj, "dev", "web/.env", true, false).unwrap_err();
     assert!(format!("{err}").contains("NOWHERE"), "{err}");
 }
@@ -181,7 +181,7 @@ fn run_merges_same_values_and_errors_on_different_ones() {
         "BASE=http://api.internal\nSHARED_URL=http://other:3100\n",
     );
     sync::commit(&pa, &proj, "dev").unwrap();
-    sync::push(&pa, &proj, "dev", false).unwrap();
+    sync::push(&pa, &proj, "dev", false, true).unwrap();
     let err = consume::run(&pa, &proj, "dev", "true", &[], false).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("SHARED_URL"), "{msg}");

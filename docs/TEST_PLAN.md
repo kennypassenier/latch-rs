@@ -109,6 +109,15 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
   as a Conflict op (and the deliberate force resolving it), history load,
   error mapping keeps the remedy, doctor snapshot.
 
+### `d13_escrow_tests.rs` (4) — no publishing without a second copy
+Real git. Push refuses under a key with no recorded escrow (naming key,
+generation, remedy and flag) and nothing reaches the origin; `latch key
+backup` records it in `_escrow/<label>.json` and unlocks the push; the
+record provably carries no plaintext, key material or passphrase;
+`--no-escrow` publishes but stays visible in state until a real escrow
+lands; a rotated generation is refused until re-escrowed; the removal
+note flips with whether a key that could read the history still exists.
+
 ### `d10_d11_tests.rs` (3) — single-file cat + duplicate rules
 Real git. Raw `cat` byte-identical + plaintext-scan over latch home;
 `--expand` resolves cross-file references strictly (unresolved → error);

@@ -8,6 +8,7 @@ pub mod credentials;
 pub mod discovery;
 pub mod envelope;
 pub mod error;
+pub mod escrow;
 pub mod groups;
 pub mod kdf;
 pub mod keys;

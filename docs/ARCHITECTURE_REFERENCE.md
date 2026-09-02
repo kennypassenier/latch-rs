@@ -84,6 +84,29 @@ design that replaced v1's keyring-only approach that failed on LXCs.
   `:`/`.`/`-` → `_`, binary slots hex-encoded.
 - The file is one AR10 envelope over a JSON slot map; the salt sits ahead
   of it (tampering changes the derived key → authentication fails).
+
+**What "OS keyring" actually means on Linux, and why it is not storage
+(established 2026-09-02, the hard way).** latch builds `keyring` v3 with
+the `linux-native` feature, which is `linux-keyutils`: the **kernel**
+keyring, not the desktop wallet. Entries appear as
+`user: keyring-rs:key:<project>@latch` under the session keyring and are
+linked into `_persistent.<uid>`. Two properties follow, and neither is
+obvious from the phrase "OS keyring":
+
+- A new login session gets a NEW session keyring. The persistent one
+  still holds the keys but is not attached until something asks for it:
+  `keyctl get_persistent @s`. Until then latch reports the key as
+  missing, which is what made an upgrade look like data loss.
+- The persistent keyring EXPIRES after a period of no access —
+  `/proc/sys/kernel/keys/persistent_keyring_expiry`, 259200 seconds
+  (three days) on this machine. A key nobody touches for a long weekend
+  can genuinely be gone.
+
+So the keyring is a convenience cache with a timer, and the durable
+copies are the encrypted credential file (this chain's middle tier) and
+the K6 escrow — which is why D13 makes publishing depend on an escrow
+existing rather than trusting the keyring. Confidentiality is not
+durability; the keyring only ever provided the first.
 - AR11: the derived key is cached on tmpfs for 15 min so interactive use
   prompts once, not per command. No tmpfs → no cache, never a disk file.
 

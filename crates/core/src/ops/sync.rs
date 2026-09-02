@@ -180,12 +180,57 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
 
 // ── W3 push ─────────────────────────────────────────────────────────────
 
-pub fn push(p: &Platform, cwd: &str, env: &str, force: bool) -> Result<PushOutcome, LatchError> {
+/// D13 (mini-round 2026-09-02): publishing is the moment ciphertext that
+/// only this machine's key can open leaves the machine. If that key has
+/// no recorded second copy, losing the keyring loses the secrets — which
+/// is exactly what happened. So the gate sits here rather than at key
+/// creation: a fresh key has no escrow yet by definition, and blocking
+/// creation would only move the problem. `--no-escrow` publishes anyway
+/// and RECORDS that choice, so an exception can never quietly become the
+/// norm.
+fn require_escrow(
+    p: &Platform,
+    repo: &crate::repo::Repo,
+    proj: &str,
+    env: &str,
+    no_escrow: bool,
+) -> Result<(), LatchError> {
+    let store = CredStore::new(p);
+    // No key here means nothing was sealed here either — nothing to guard.
+    let Some(key) = keys::for_env(&store, proj, env)? else {
+        return Ok(());
+    };
+    let label = &key.id.label;
+    let generation = key.id.generation;
+    if crate::escrow::has(repo, label, generation)? {
+        return Ok(());
+    }
+    if no_escrow {
+        crate::escrow::note_skipped(repo, label, generation, p.clock.now_unix())?;
+        return Ok(());
+    }
+    Err(LatchError::other(
+        format!(
+            "no key backup is recorded for '{}' (generation {}) — publishing now would put secrets in the repo that only this machine can open",
+            label, generation
+        ),
+        "run 'latch key backup <file>' first (it records the escrow, and re-running it is safe), then push again — or pass --no-escrow to publish without one, which stays visible in 'latch state'",
+    ))
+}
+
+pub fn push(
+    p: &Platform,
+    cwd: &str,
+    env: &str,
+    force: bool,
+    no_escrow: bool,
+) -> Result<PushOutcome, LatchError> {
     discovery::validate_env(env)?;
     let _lock = lock::acquire(p, 10, || {})?;
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
+    require_escrow(p, &repo, &proj.name, env, no_escrow)?;
     // B4: a shared group edited on two machines collides here as a plain
     // git conflict whose remedies (--overwrite / --force) would silently
     // drop one side. Before pushing, compare our group content against
@@ -237,7 +282,7 @@ pub fn pull(
         keys::for_env(&store, &proj.name, env)?.ok_or_else(|| {
             LatchError::other(
             format!("no key for project '{}' ({}) on this machine", proj.name, env),
-            "clone your credentials here (latch clone) or restore a key backup (latch key restore)",
+            "clone your credentials here (latch clone) or restore a key backup (latch key restore). On Linux the keys live in the KERNEL keyring, which a new login session does not attach by itself: run 'keyctl get_persistent @s' and retry BEFORE concluding the key is gone — re-minting costs the project's history",
         )
         })?;
 

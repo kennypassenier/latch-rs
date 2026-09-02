@@ -94,7 +94,7 @@ fn full_round_trip_and_second_machine() {
         "example excluded, list visible"
     );
     assert!(matches!(
-        sync::push(&pa, &proj_a.display().to_string(), "dev", false).unwrap(),
+        sync::push(&pa, &proj_a.display().to_string(), "dev", false, true).unwrap(),
         latch_core::repo::PushOutcome::Pushed
     ));
 
@@ -136,14 +136,14 @@ fn full_round_trip_and_second_machine() {
     // B modifies + pushes; A's un-pulled push must then be refused (S4).
     write(&proj_b.join("api/.env"), "API_KEY=rotated\n");
     sync::commit(&pb, &proj_b.display().to_string(), "dev").unwrap();
-    sync::push(&pb, &proj_b.display().to_string(), "dev", false).unwrap();
+    sync::push(&pb, &proj_b.display().to_string(), "dev", false, true).unwrap();
 
     write(&proj_a.join(".env"), "TOP=2\n");
     sync::commit(&pa, &proj_a.display().to_string(), "dev").unwrap();
-    let err = sync::push(&pa, &proj_a.display().to_string(), "dev", false).unwrap_err();
+    let err = sync::push(&pa, &proj_a.display().to_string(), "dev", false, true).unwrap_err();
     assert!(format!("{err}").contains("S4"), "{err}");
     // Force takes A's content on top — no force-push, history intact.
-    sync::push(&pa, &proj_a.display().to_string(), "dev", true).unwrap();
+    sync::push(&pa, &proj_a.display().to_string(), "dev", true, true).unwrap();
 
     // Pull on A with local mods: S4 refusal without overwrite.
     // (B rotated api/.env remotely… but A force-pushed after commit of
@@ -194,7 +194,7 @@ fn wrong_key_on_pull_reports_what_is_needed() {
     let pa = a.platform();
     init::run(&pa, &proj.display().to_string(), None).unwrap();
     sync::commit(&pa, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&pa, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&pa, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // Machine B gets a DIFFERENT key for the same project name.
     let proj_b = tmp.path().join("work-b/app3");
@@ -223,7 +223,7 @@ fn l3_run_history_rollback_verify_state_reset() {
     let p = m.platform();
     init::run(&p, &proj.display().to_string(), None).unwrap();
     sync::commit(&p, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // W6 run: secrets land in the child env, never on disk — proven with a
     // real child that checks the variable.
@@ -253,14 +253,14 @@ fn l3_run_history_rollback_verify_state_reset() {
     // Change + push a second version, then S3 history shows both.
     write(&proj.join(".env"), "TOKEN=second\nDEBUG=1\n");
     sync::commit(&p, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false, true).unwrap();
     let hist = consume::history(&p, &proj.display().to_string()).unwrap();
     assert!(hist.len() >= 2, "two pushes = two versions");
 
     // S3 rollback to the first version → push → pull → file restored.
     let first_ref = &hist.last().unwrap().reference;
     consume::rollback(&p, &proj.display().to_string(), "dev", first_ref).unwrap();
-    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false, true).unwrap();
     sync::pull(&p, &proj.display().to_string(), "dev", false, true).unwrap();
     assert_eq!(
         std::fs::read_to_string(proj.join(".env")).unwrap(),
@@ -348,7 +348,7 @@ fn l3_run_history_rollback_verify_state_reset() {
         .reference
         .clone();
     consume::rollback(&p, &proj.display().to_string(), "dev", &good_ref).unwrap();
-    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false, true).unwrap();
     let ver = consume::verify(&p, Some("app9")).unwrap();
     assert!(
         ver.entries
@@ -371,7 +371,7 @@ fn l4a_diff_edit_examples() {
     let p = m.platform();
     init::run(&p, &proj.display().to_string(), None).unwrap();
     sync::commit(&p, &proj.display().to_string(), "dev").unwrap();
-    sync::push(&p, &proj.display().to_string(), "dev", false).unwrap();
+    sync::push(&p, &proj.display().to_string(), "dev", false, true).unwrap();
 
     // W10 diff, masked by default: names visible, values withheld.
     write(&proj.join(".env"), "KEEP=1\nCHANGE=new\nADDED=y\n");
@@ -463,7 +463,7 @@ fn s5_offline_cache_serves_when_origin_unreachable() {
     let cwd = proj.display().to_string();
     latch_core::ops::init::run(&pa, &cwd, None).unwrap();
     sync::commit(&pa, &cwd, "dev").unwrap();
-    sync::push(&pa, &cwd, "dev", false).unwrap();
+    sync::push(&pa, &cwd, "dev", false, true).unwrap();
 
     // Simulate a network outage: the file:// origin stops existing.
     let bare = tmp.path().join("origin.git");
