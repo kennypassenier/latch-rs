@@ -393,6 +393,6 @@ that supplies the answer. Relevant variables:
 | `LATCH_BACKUP_PASSPHRASE` | K6 backup/restore |
 | `LATCH_KEY_<PROJECT>[_<ENV>]` | project/env key, hex |
 | `LATCH_GROUP_<NAME>_<ENV>` | group key, hex |
-| `LATCH_HOME` | override `~/.latch` |
+| `LATCH_HOME` | override `~/.latch` — a different home is a separate latch, including its own OS-keyring namespace (D16), so it never sees the machine's other keys |
 
 Every error message ends with a remedy after `::` (AR6).

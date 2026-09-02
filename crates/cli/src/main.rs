@@ -340,7 +340,7 @@ fn main() {
 
     let env = RealEnv;
     let files = RealFiles;
-    let keyring = RealKeyring;
+    let keyring = RealKeyring::new(&env);
     let prompt = RealPrompt::detect(cli.non_interactive);
     let clock = RealClock;
     let proc = RealProc;

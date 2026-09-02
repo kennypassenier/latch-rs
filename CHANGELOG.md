@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.4.0 — 2026-09-02
+
+### Changed — BEHAVIOUR (D16 — via mini-round, queue item M3)
+- The OS keyring namespace now follows the latch home. `LATCH_HOME` used
+  to move the config, the clone and the credential file while every home
+  still read the same machine-wide keyring, so a scratch home could read
+  and back up the real credentials of the machine it ran on — which is
+  how a restore drill swept a live PAT into a throwaway escrow file.
+  The default home keeps the service name `latch` (nothing already
+  stored moves); any other home gets `latch@<resolved home>`. Resolved
+  paths are compared rather than "is LATCH_HOME set", so spelling the
+  default out does not orphan the keys it points at.
+  **If you deliberately ran a second home that relied on the keyring**,
+  its keys now live under the old name: `latch key restore <file>`, or
+  point `LATCH_HOME` back at the default. Nothing in this workspace did.
+
 ## 2.3.1 — 2026-09-02
 
 ### Added (D15 — via mini-round, Kenny's question after the 2.3.0 release)

@@ -11,6 +11,30 @@ use super::{Env, Files, Keyring, ProcOutput, Prompt};
 
 const KEYRING_SERVICE: &str = "latch";
 
+/// D16 (mini-round 2026-09-02): the OS keyring is machine-wide, so a
+/// second latch home used to look into the same drawer — `LATCH_HOME`
+/// moved the config, the clone and the credential file, but not which
+/// keys were visible. A scratch home could therefore read, and back up,
+/// the real credentials of the machine it ran on; that is how a drill
+/// swept a live PAT into a throwaway escrow file.
+///
+/// The keyring namespace now follows the home: the DEFAULT home keeps
+/// the plain service name (so nothing anyone already stored moves), and
+/// any other home gets its own. Comparing resolved paths rather than
+/// "is LATCH_HOME set" keeps `LATCH_HOME=~/.latch` — the same place
+/// spelled out — from orphaning the keys it points at.
+pub fn keyring_service(env: &dyn Env) -> String {
+    let default_home = dirs::home_dir()
+        .map(|p| format!("{}/.latch", p.display()))
+        .unwrap_or_else(|| "./.latch".into());
+    let home = latch_home(env);
+    if home == default_home {
+        KEYRING_SERVICE.to_string()
+    } else {
+        format!("{}@{}", KEYRING_SERVICE, home)
+    }
+}
+
 /// Apply a Unix permission mode to an open-options builder. On Windows
 /// there is no mode: NTFS ACLs make files under the user profile private
 /// by default, so this is a no-op (privacy comes from the ~/.latch
@@ -245,10 +269,27 @@ fn keep_entry(entry: &ignore::DirEntry, lifted: &ignore::gitignore::Gitignore) -
     )
 }
 
-pub struct RealKeyring;
+/// The OS keyring, namespaced per latch home (D16 — see
+/// [`keyring_service`]). Built with [`RealKeyring::new`] from the same
+/// `Env` the home is resolved from, so the two can never disagree.
+pub struct RealKeyring {
+    service: String,
+}
 impl RealKeyring {
-    fn entry(slot: &str) -> Result<keyring::Entry, LatchError> {
-        keyring::Entry::new(KEYRING_SERVICE, slot).map_err(|e| {
+    pub fn new(env: &dyn Env) -> Self {
+        Self {
+            service: keyring_service(env),
+        }
+    }
+
+    /// The namespace this instance reads and writes — surfaced so a
+    /// diagnosis can say WHICH drawer it looked in.
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
+    fn entry(&self, slot: &str) -> Result<keyring::Entry, LatchError> {
+        keyring::Entry::new(&self.service, slot).map_err(|e| {
             LatchError::other(
                 format!("keyring entry {}: {}", slot, e),
                 "the OS keyring refused the entry — this is unusual; the file backend still works",
@@ -260,13 +301,13 @@ impl Keyring for RealKeyring {
     fn available(&self) -> bool {
         // A cheap real probe: try to read a well-known slot; transport
         // errors (no Secret Service on this machine) mean unavailable.
-        Self::entry("probe")
+        self.entry("probe")
             .map(|e| matches!(e.get_password(), Ok(_) | Err(keyring::Error::NoEntry)))
             .unwrap_or(false)
     }
 
     fn get(&self, slot: &str) -> Result<Option<Vec<u8>>, LatchError> {
-        match Self::entry(slot)?.get_secret() {
+        match self.entry(slot)?.get_secret() {
             Ok(v) => Ok(Some(v)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(LatchError::other(
@@ -277,7 +318,7 @@ impl Keyring for RealKeyring {
     }
 
     fn set(&self, slot: &str, value: &[u8]) -> Result<(), LatchError> {
-        Self::entry(slot)?.set_secret(value).map_err(|e| {
+        self.entry(slot)?.set_secret(value).map_err(|e| {
             LatchError::other(
                 format!("keyring write {}: {}", slot, e),
                 "unlock your session keyring, or rely on the file backend",
@@ -286,7 +327,7 @@ impl Keyring for RealKeyring {
     }
 
     fn delete(&self, slot: &str) -> Result<(), LatchError> {
-        match Self::entry(slot)?.delete_credential() {
+        match self.entry(slot)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(LatchError::other(
                 format!("keyring delete {}: {}", slot, e),

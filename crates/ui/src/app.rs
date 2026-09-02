@@ -38,7 +38,7 @@ fn lower(code: KeyCode, mods: KeyModifiers) -> Option<Key> {
 pub fn run() -> Result<(), LatchError> {
     let env = RealEnv;
     let files = RealFiles;
-    let keyring = RealKeyring;
+    let keyring = RealKeyring::new(&env);
     let prompt = RealPrompt::detect(false);
     let clock = RealClock;
     let proc = RealProc;

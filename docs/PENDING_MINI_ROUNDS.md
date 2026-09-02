@@ -8,61 +8,33 @@ compacted, this file does not.
 
 ## Open
 
-### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots
-**Found:** 2026-09-02, while running the M2 drill.
-**What happens:** `LATCH_HOME` isolates the config, the clone and the
-credential FILE — but not the OS keyring, which is machine-scoped. A
-`latch key backup` run under a throwaway `LATCH_HOME` therefore swept up
-the machine's real `pat` slot and wrote it into a scratch escrow file
-(shredded immediately). Running it inside a fresh session keyring
-(`keyctl session -`) did not help: keyring-rs still resolved the real
-entries through the persistent keyring.
-**Why it matters:** the project's own hard rule is that real secrets
-never enter development, and this is a path where they do so silently.
-It also makes every future drill awkward for the same reason.
-**Not decided yet.** Options to weigh in a mini-round: a documented
-warning in R14, a `--only <slot>` scope for backup, or honouring an
-explicit "no keyring" switch for scratch runs. Deliberately left open
-rather than fixed in passing, because it changes what `key backup`
-means.
-
-**Someone is already waiting on this decision** (Homelab Rust, recorded
-there as F238, 2026-09-02). That project had a plan for its HOST daemon
-to write its own escrow as an extra copy beside the host-meta backup.
-They have blocked it in their own register until M3 is decided, for
-exactly this reason: on a machine that holds other latch credentials in
-its keyring, such a backup would sweep them into a file that was never
-meant to carry them. So M3 is not only latch hygiene — it gates a
-feature in another project, and whoever runs the round tells them the
-outcome. (Their HOST daemon does not use latch today at all; the CLIENT
-calls `latch cat` and nothing else.)
-
-### M1 · Prove the escrow gate on a real key (D13)
-**Decided:** 2026-09-02 (mini-round after the keyring wipe).
-**Measured at:** the first time a real key on Kenny's machine is pushed
-under 2.3.0 — which is due anyway, because `stacks`, `almanac` and
-`hub-clients` carry no recorded escrow yet.
-**Passes when:** `latch push` refuses with the remedy, one run of
-`latch key backup <file>` records it, the same push then succeeds, and
-`latch state` shows `escrow: recorded for gen N`.
-**Fails →** fall back to the agreed alternative: publishing stays
-allowed, but `--no-escrow` is required and the skip stays visible in
-`latch state` (already implemented, so the fallback is a flag flip in the
-gate, not a rebuild).
-
-### M2 · Restore an escrow file for real, once (K6)
-**Decided:** 2026-09-02, same round.
-**Measured at:** before the next release after 2.3.0.
-**Passes when:** on a scratch repo, an escrow file written by
-`latch key backup` is restored with `latch key restore` into an emptied
-credential store, and the project's secrets decrypt afterwards.
-**Why it is not already covered:** `l5_key_machine_tests.rs` proves the
-mechanism with synthetic material inside the suite. No human-made escrow
-file has ever been restored. A backup that has never been restored is
-Schrödinger's backup — the whole reason this project needed a recovery
-day.
+*(empty — every queued measurement and mini-round is closed below, each
+with the evidence that closed it. The deferred Windows runtime check is
+not a mini-round: it needs Kenny's Win11 machine and lives in
+CLAUDE.md.)*
 
 ## Closed
+
+### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots — CLOSED 2026-09-02
+**Decided:** the keyring namespace follows the latch home (D16). Default
+home keeps the service name `latch` so nothing already stored moves; any
+other home gets `latch@<resolved home>`, compared on resolved paths so
+`LATCH_HOME=~/.latch` still means the ordinary drawer.
+**Why this rather than a `--only` flag on backup:** the backup was where
+it became visible, not where it went wrong. Under a scratch home
+`state`, `key show` and `clone` saw foreign keys too; scoping the
+namespace fixes the class, a flag would have fixed one symptom.
+**Measured before deciding** (FORM_PROTOCOL §5.6): nothing in Kenny's
+`~/Projects` sets `LATCH_HOME` today — the only hits are documentation —
+so the change could not orphan a live key anywhere.
+**Proven:** `d16_keyring_namespace_tests.rs`. The isolation ran against
+the real OS keyring on this machine (two scratch namespaces, never the
+machine's own): home A wrote a slot, home B could not read it, cleanup
+verified afterwards with `keyctl show`. The test prints "NOT PROVEN
+HERE" instead of passing quietly where no keyring exists.
+**Told:** the Homelab Rust project, whose F238 blocked a planned
+host-side escrow on this decision.
+
 
 ### M1 · Prove the escrow gate on a real key — CLOSED 2026-09-02
 Measured on Kenny's own installation right after `cargo install` of
