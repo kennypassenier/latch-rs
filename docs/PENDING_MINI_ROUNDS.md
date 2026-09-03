@@ -32,8 +32,11 @@ the real OS keyring on this machine (two scratch namespaces, never the
 machine's own): home A wrote a slot, home B could not read it, cleanup
 verified afterwards with `keyctl show`. The test prints "NOT PROVEN
 HERE" instead of passing quietly where no keyring exists.
-**Told:** the Homelab Rust project, whose F238 blocked a planned
-host-side escrow on this decision.
+**Still to tell:** the Homelab Rust project, whose F238 blocks a planned
+host-side escrow on this decision. Its session ended before the outcome
+existed, so the message never landed — say it there when that project
+next opens: the namespace is now per home, so a host that keeps no other
+latch credentials can write its own escrow safely.
 
 
 ### M1 · Prove the escrow gate on a real key — CLOSED 2026-09-02
