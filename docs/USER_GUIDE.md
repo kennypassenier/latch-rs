@@ -42,11 +42,17 @@ Resolution order for every credential (PAT, project keys, group keys):
    `key:myapp.prod` → `LATCH_KEY_MYAPP_PROD` (binary slots travel as hex —
    `latch key show --reveal` prints exactly the right form).
 2. **Encrypted credential file** — `~/.latch/credentials.enc`, one
-   Argon2id-passphrase-encrypted envelope. Used automatically where no OS
-   keyring exists (LXC containers, servers). `LATCH_PASSPHRASE` unlocks it
-   non-interactively; otherwise you are prompted once per session (AR11
-   tmpfs cache, 15 min TTL).
-3. **OS keyring** — used automatically on desktops with a Secret Service.
+   Argon2id-encrypted envelope. Every `latch login` and every new key is
+   written here, on every machine, so credentials survive a reboot. The
+   file is opened by a random machine key in `~/.latch/credentials.key`
+   (created with the file, readable only by you), so nothing prompts.
+   Keep both files together: copying or syncing the latch home carries
+   the credentials to another machine. A file created with
+   `LATCH_PASSPHRASE` set uses that passphrase instead, and then prompts
+   once per session (AR11 tmpfs cache, 15 min TTL).
+3. **OS keyring** — read only, for credentials an older latch stored
+   there. Before 2.5.0 writes went to the keyring when one was available;
+   on Linux that keyring is emptied by a reboot.
 
 The same commands work in all three worlds; `latch state` (W8) shows which
 layer serves what.

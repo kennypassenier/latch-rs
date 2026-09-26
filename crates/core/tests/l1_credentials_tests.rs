@@ -130,12 +130,21 @@ fn ar3_file_backend_round_trip_and_wrong_passphrase() {
 
 #[test]
 fn ar11_session_cache_prompts_once_until_ttl_expires() {
+    // M4: only a file created on purpose with a passphrase prompts; seed
+    // one, then open it with no env passphrase.
+    let maker = World::lxc();
+    maker.env.set("LATCH_PASSPHRASE", "pp");
+    CredStore::new(&maker.platform()).set("pat", b"v").unwrap();
     let w = World::lxc();
+    w.files.seed(
+        "/home/t/.latch/credentials.enc",
+        &maker.files.files.borrow()["/home/t/.latch/credentials.enc"],
+    );
     let p = w.platform();
     let store = CredStore::new(&p);
-    // First write: no env passphrase → prompt, cache session key.
+    // First read: no env passphrase → prompt, cache session key.
     w.prompt.passphrases.borrow_mut().push("pp".into());
-    store.set("pat", b"v").unwrap();
+    store.get("pat").unwrap().unwrap();
     assert_eq!(w.prompt.asked.borrow().len(), 1);
     w.files
         .set_mtime("/run/user/1000/latch/session.key", *w.clock.now.borrow());
@@ -159,11 +168,19 @@ fn ar11_session_cache_prompts_once_until_ttl_expires() {
 
 #[test]
 fn m7_headless_without_passphrase_is_a_hard_error_not_a_hang() {
-    let w = World::lxc();
-    let mut wp = w;
+    // Since M4 a new file never prompts (machine key); the hang risk is
+    // left only for a passphrase file opened non-interactively.
+    let maker = World::lxc();
+    maker.env.set("LATCH_PASSPHRASE", "pp");
+    CredStore::new(&maker.platform()).set("pat", b"v").unwrap();
+    let mut wp = World::lxc();
+    wp.files.seed(
+        "/home/t/.latch/credentials.enc",
+        &maker.files.files.borrow()["/home/t/.latch/credentials.enc"],
+    );
     wp.prompt = MockPrompt::non_interactive();
     let p = wp.platform();
-    let err = CredStore::new(&p).set("pat", b"v").unwrap_err();
+    let err = CredStore::new(&p).set("pat", b"v2").unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("LATCH_"), "remedy names the env route: {msg}");
 }
@@ -198,7 +215,8 @@ fn m1_login_validates_and_stores() {
     let p = w.platform();
     let out = login::run(&p, Some("ghp_token".into()), Some("kenny/secrets".into())).unwrap();
     assert_eq!(out.repo, "kenny/secrets");
-    assert_eq!(out.stored_in, Source::Keyring);
+    // M4: stored in the durable file even though a keyring is up.
+    assert_eq!(out.stored_in, Source::File);
     // Validation ran a git ls-remote against the right URL…
     let calls = w.proc.calls_containing("ls-remote");
     assert_eq!(calls.len(), 1);

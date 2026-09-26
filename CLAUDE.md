@@ -12,12 +12,12 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 
 | Field | Value |
 |---|---|
-| Current phase | COMPLETE — reopened once by mini-round D13/D14 (2026-09-02, key loss) |
+| Current phase | COMPLETE — reopened by mini-round D13/D14 (2026-09-02, key loss) and by M4 (2026-09-26, durable credentials) |
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
-| Next gate | none; docs/PENDING_MINI_ROUNDS.md is empty (M1/M2/M3 closed with evidence). Only the deferred Windows runtime check remains |
+| Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.4.0 released + signed** (escrow gate D13/D14, update --reinstall D15, keyring namespace per home D16); the installed binary is the signed release build |
-| Next action | waiting on Kenny: he stopped mid-commit to reboot (2026-09-20). `.githooks/trace-inputs.cjs` is modified and unstaged — a verified-identical sync of dev-procedure's `fix-57` (HOOK_VERSION 4 → 5); no other hook differs. Committing it is the whole task, message drafted with `[fix-57]`. After the reboot his latch keys and PAT are gone with the kernel keyring: `latch key restore ~/latch-keys-2026-09-02.latchbk`, never re-mint |
+| Build state | **v2.5.0 prepared** on branch `m4-wsl-measurement-windows-check`: M4 durable credential file (every write to `credentials.enc`, machine key `credentials.key`), fix-win-keyring-1, fix-color-1. v2.4.0 is the last signed release |
+| Next action | Kenny answered the 2026-09-26 form: m4-store = one file shared via Syncthing (built), windows-git = Claude installs via winget (done, Git 2.55.0), release-timing = together in 2.5.0, both corrections Klopt. Next: merge, tag v2.5.0, Kenny signs, finish the Windows checklist with the 2.5.0 exe, then move Kenny's credentials from ~/.secrets/latch/env into the file and prove M4 across a reboot into the other OS. Credential Manager canary `latch-m4-canary` still to read back after the next Windows boot |
 
 ## Deferred to end-of-project (Kenny-gated)
 

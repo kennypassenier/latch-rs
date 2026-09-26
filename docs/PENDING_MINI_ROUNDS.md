@@ -40,9 +40,48 @@ PAT are exported once with `latch key show` into an env file inside the
 Syncthing-synced `~/.secrets/latch/` (env vars win the chain, K4), so
 latch works on both sides today. That is a workaround; this mini-round
 is the fix, and closing it removes the env file.
+**Measured on WSL (2026-09-26, Windows 11 + WSL2 Arch, kernel
+6.18.33.2-microsoft-standard-WSL2):** the keyring does not even outlive
+a terminal, let alone a restart.
+- `keyctl get_persistent @s` → `Operation not supported`: the WSL kernel
+  has no persistent keyring, so the keyring crate's `linux-native`
+  backend can only link a key into the session keyring.
+- A key added inside `keyctl session m4scratch` was readable there and
+  gone from the next session (`keyctl search @s` and `@u` →
+  `Required key not available`).
+- `journalctl --list-boots` lists two boots on 2026-09-26 alone: every
+  WSL restart is a new kernel, and kernel keyrings live only in RAM.
+So the survey is complete: Garuda no, LXC no, WSL no. On Windows the
+Credential Manager is persistent by design (keyring uses
+`CRED_PERSIST_ENTERPRISE`); a canary `latch-m4-canary` was stored with
+`cmdkey` on 2026-09-26 and is read back after the next Windows boot
+(`cmdkey /list:latch-m4-canary`), then deleted
+(`cmdkey /delete:latch-m4-canary`).
+**Decided (Kenny, 2026-09-26 form, item m4-store): "Eén bestand, gedeeld
+via Syncthing".** Every write goes to `credentials.enc` in the latch home;
+a new file is opened by a random machine key `credentials.key` (0600)
+beside it, so nothing prompts; the keyring is read only. The latch home is
+already the Syncthing-shared `~/.secrets/latch`, so storing once serves
+Garuda and WSL. Built for 2.5.0 (`m4_durable_credentials_tests.rs`), to be
+released together with fix-win-keyring-1 and fix-color-1 (item
+release-timing).
 **Proof that closes it:** on the workstation, `latch state` reads every
 key as present after a reboot into the OTHER OS with no restore step and
 no env override.
+
+### fix-win-keyring-1 · The Windows build never reached the Credential Manager — OPENED 2026-09-26
+**Found:** on the Windows runtime check with the signed v2.4.0 binary,
+`latch key restore` reported one credential restored, the next
+`latch state` read `PAT : MISSING`, and `cmdkey /list` held no latch
+entry. keyring 3 falls back to its in-memory mock store on Windows unless
+`windows-native` is enabled, and latch-core enabled only `linux-native`.
+**Fixed on branch `m4-wsl-measurement-windows-check`:** the cfg(windows)
+dependency table enables `windows-native`; a manifest test guards it on
+Linux, a round-trip test runs in the Windows CI job.
+**Proof that closes it:** the Windows CI job passes the round trip, and
+checklist §1 on the real machine with the next release shows a `latch`
+entry in the Credential Manager and no PAT prompt on the second command.
+Correction form sent 2026-09-26, answer pending.
 
 ## Closed
 

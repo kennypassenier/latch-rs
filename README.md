@@ -23,9 +23,9 @@ latch run -- docker compose up     # secrets straight into the process
 - **Authenticated envelopes** — every ciphertext names the key that opens
   it in a header that is itself authenticated; any tampering, anywhere,
   fails loudly. The byte format is frozen by regression vectors.
-- **Credentials that work everywhere** — OS keyring on desktops, an
-  Argon2id-encrypted file on servers/LXCs, environment variables for
-  orchestration. Same commands in all three worlds.
+- **Credentials that survive a reboot** — one Argon2id-encrypted file in
+  the latch home on every machine, opened by a machine key beside it, and
+  environment variables for orchestration. Same commands everywhere.
 - **File groups** — share one file's content across projects with a
   one-line pragma; one edit fans out at commit, two conflicting edits are
   a hard error with an explicit resolve.

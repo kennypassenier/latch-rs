@@ -75,9 +75,14 @@ regression vectors too.
 
 ## 4 · Credential chain (K4, AR3, AR11)
 
-`env → encrypted file → OS keyring`, resolution in that order; writes go
-to keyring where available, else the file. One code path everywhere — the
+`env → encrypted file → OS keyring`, resolution in that order; writes
+always go to the file (M4, 2026-09-26), so the keyring is only read, for
+values stored there by an older latch. One code path everywhere — the
 design that replaced v1's keyring-only approach that failed on LXCs.
+A file created without `LATCH_PASSPHRASE` is opened by a random machine
+key in `credentials.key` beside it (mode 0600), so it never prompts; on
+Kenny's workstation the latch home is the Syncthing-shared
+`~/.secrets/latch`, so both files follow him between Garuda and WSL.
 
 - Slot names: `pat`, `key:<project>`, `key:<project>.<env>`,
   `group:<name>.<env>`; env-var form is `LATCH_` + slot with
