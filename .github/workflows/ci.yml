@@ -41,7 +41,7 @@ jobs:
       # a stored credential reaches the real Credential Manager, not the
       # keyring crate's in-memory mock.
       - name: Windows credential store round trip
-        run: cargo test -p latch-core --test fix_win_keyring_1_tests
+        run: cargo test -p latch-core --test fix_win_keyring_1_tests --test fix_win_paths_1_tests
 
   # AR16: the pinned minimum supported Rust version must keep building —
   # a dependency bump that silently raises the bar fails here, not on a

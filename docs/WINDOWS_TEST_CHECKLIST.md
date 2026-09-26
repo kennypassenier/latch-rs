@@ -10,14 +10,19 @@ Prerequisites on the Windows machine: Git for Windows (provides `git`),
 the built-in `curl` and OpenSSH client (Windows 10+/11 have both), and the
 `latch.exe` for your release. `%USERPROFILE%\.latch` is the home dir.
 
-## 1 · Credentials via the Windows Credential Manager (K4)
+## 1 · Credentials in the durable file (K4, M4)
 
-- [ ] `latch login --repo <owner/repo>` with a PAT — stored without error.
-- [ ] `latch state` shows `keyring : available` (Windows Credential
-      Manager), not the file backend.
-- [ ] Open *Credential Manager → Windows Credentials* and confirm a
-      `latch` entry exists.
-- [ ] A second `latch` command does not re-prompt for the PAT.
+Since 2.5.0 every write goes to the encrypted credential file on every OS,
+Windows included; the Credential Manager is only read, for values an
+older latch stored there (fix-win-keyring-1 made that read real).
+
+- [ ] `latch login --repo <owner/repo>` with a PAT — "token stored in the
+      encrypted credential file".
+- [ ] `latch state` in a second process shows `PAT : present (File)` and
+      `cred file : present`; `%USERPROFILE%\.latch` holds
+      `credentials.enc` and `credentials.key`.
+- [ ] A second `latch` command does not prompt for the PAT or a
+      passphrase.
 
 ## 2 · The daily loop against real git (W1–W6)
 
@@ -82,3 +87,23 @@ scratch `LATCH_HOME` under `%TEMP%\latch-wincheck`.
   the user (plus an AppContainer SID with execute-only).
 - Found: `error:`/`warning:` labels printed raw ANSI escapes into a
   redirected stderr → fix-color-1 (test first, then fix).
+
+### 2026-09-26 — full run, Windows 11 (NT 10.0.26200), latch 2.5.0
+Release binary from the v2.5.0 tag (SHA256 verified; not yet signed),
+Git for Windows 2.55.0 installed with winget, scratch `LATCH_HOME` under
+`%TEMP%\latch-wincheck`, scratch project `wincheck` in
+`kennypassenier/secrets`.
+- §1 passed: login stored the PAT in the file; a second process read
+  `PAT : present (File)` without any prompt.
+- §2 passed with `latch init --name wincheck`: commit, push
+  (`--no-escrow`), bind + pull in a fresh directory gave identical bytes,
+  `latch run -- cmd /c "echo %SOME_KEY%"` printed the value, status and
+  diff read correctly. Found: the default project name took the whole
+  path, and a `sub\.env` was never discovered → fix-win-paths-1.
+- §3 passed: `latch edit` refuses with the WA message.
+- §4 manual path passed (offer → create `--project wincheck` → apply
+  `--code`), between two scratch homes on this machine. `clone --to` not
+  run: no ssh target with latch is set up from Windows.
+- §5 open: needs a signed release newer than the installed build.
+- §6 passed earlier the same day.
+- Found: `latch path` suggested `export PATH=".:$PATH"` → fix-win-paths-1.

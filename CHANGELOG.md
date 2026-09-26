@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.1 — 2026-09-26
+
+### Fixed (fix-win-paths-1, found on the Windows runtime check)
+- A `.env` in a subdirectory was silently skipped on Windows: the walk
+  reported `sub\.env` and discovery matched the file name against the
+  whole string. Walked paths are now `/`-separated on every OS, like the
+  repository paths they become.
+- `latch init` on Windows named the project after the whole path and
+  refused it; it now takes the last directory, as on Linux.
+- `latch path` on Windows reads `PATH` with `;`, compares directories
+  without regard to case, and suggests a PowerShell line instead of
+  `export PATH=...`.
+- fix-remove-escrow-1: `latch project remove` now also deletes the
+  project's escrow record `_escrow/<name>.json`; before, a removed project
+  kept showing escrow state.
+
 ## 2.5.0 — 2026-09-26
 
 ### Changed — BEHAVIOUR (M4 — via mini-round, 2026-09-26)
