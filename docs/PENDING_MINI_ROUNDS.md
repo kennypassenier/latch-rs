@@ -98,6 +98,16 @@ which also runs in the Windows CI job.
 2.5.1 a nested `.env` shows up in `latch status` on DESKTOP-KENNY.
 Correction form sent 2026-09-26, answer pending.
 
+### fix-remove-escrow-1 · `project remove` left the escrow record behind — OPENED 2026-09-26
+**Found:** after removing the scratch project `wincheck` from the Windows
+check, `_escrow/wincheck.json` stayed in `kennypassenier/secrets`.
+**Fixed on branch `fix-windows-paths`:** remove deletes
+`_escrow/<name>.json` in the same commit; asserted in
+`d9_project_remove_tests.rs`. The orphan record was removed from the
+secrets repo by hand.
+**Proof that closes it:** the next real `latch project remove` leaves no
+`_escrow/<name>.json` on the remote.
+
 ## Closed
 
 ### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots — CLOSED 2026-09-02

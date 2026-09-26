@@ -112,6 +112,17 @@ fn remove_sweeps_all_envs_keeps_keys_and_history() {
         .unwrap();
     assert!(!probe.join("app").exists(), "app prefix must be gone");
     assert!(probe.join("other/dev/.env.enc").exists(), "other untouched");
+    // fix-remove-escrow-1: the project's escrow record goes with it; a
+    // record of skipped escrows for a project that no longer exists kept
+    // `_escrow/wincheck.json` in Kenny's repo after the Windows check.
+    assert!(
+        !probe.join("_escrow/app.json").exists(),
+        "escrow record of a removed project must go"
+    );
+    assert!(
+        probe.join("_escrow/other.json").exists(),
+        "other's record stays"
+    );
 
     // Link + marker gone; key KEPT.
     assert!(project::list(&pa).unwrap().iter().all(|p| p.name != "app"));

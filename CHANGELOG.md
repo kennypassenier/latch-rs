@@ -12,6 +12,9 @@
 - `latch path` on Windows reads `PATH` with `;`, compares directories
   without regard to case, and suggests a PowerShell line instead of
   `export PATH=...`.
+- fix-remove-escrow-1: `latch project remove` now also deletes the
+  project's escrow record `_escrow/<name>.json`; before, a removed project
+  kept showing escrow state.
 
 ## 2.5.0 — 2026-09-26
 

@@ -267,6 +267,13 @@ pub fn remove(
     for rel in &files {
         repo.remove(&format!("{}/{}", name, rel))?;
     }
+    // fix-remove-escrow-1: the D13 escrow record describes this project's
+    // keys; left behind, `latch state` elsewhere keeps reporting escrows
+    // for a project that no longer exists.
+    let escrow_rel = format!("{}/{}.json", crate::escrow::ESCROW_PREFIX, name);
+    if repo.read(&escrow_rel)?.is_some() {
+        repo.remove(&escrow_rel)?;
+    }
     repo.push(&format!("remove project {}", name), false)?;
     // git tracks no directories, so the emptied tree would stay behind in
     // the clone and keep the project looking half-present.
