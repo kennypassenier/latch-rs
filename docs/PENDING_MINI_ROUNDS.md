@@ -8,10 +8,41 @@ compacted, this file does not.
 
 ## Open
 
-*(empty — every queued measurement and mini-round is closed below, each
-with the evidence that closed it. The deferred Windows runtime check is
-not a mini-round: it needs Kenny's Win11 machine and lives in
-CLAUDE.md.)*
+### M4 · Credentials must survive a reboot without a backup ritual — OPENED 2026-09-26
+**What happened, again:** after the reboot of 2026-09-20 `latch state`
+on the workstation read `PAT MISSING` and `key MISSING` for all four
+projects, with `keyctl show` showing an empty persistent keyring — the
+2026-09-02 pattern (kernel keyring, three-day expiry) a second time, and
+it surfaced while the dual-boot sync was being set up (the workstation
+now boots Garuda and Windows/WSL in turn, so a keyring that forgets is
+empty on every other boot by construction).
+**Kenny's decision (2026-09-26, dual-boot form, verbatim):** *"het kan
+NIET zijn dat ik telkens mijn keys kwijtspeel, en ik wil ook niet meer
+afhankelijk zijn van een verplichte backup. Dit proces moet herbekeken
+worden. Ik wil op een secure plek in het os mijn credentials één keer
+kunnen opslaan en de rest moet gewoon fucking altijd werken."*
+**What the code does today** (`crates/core/src/credentials.rs`): reads
+env → encrypted file → keyring, but WRITES go to the keyring whenever
+one is available and to the file only otherwise. There is no way to
+choose the durable store; the durable store is only ever reached by
+accident. The escrow gate (D13) protects against loss but is the
+"verplichte backup" Kenny no longer accepts as the normal path.
+**Mini-round to run in the latch session:** the durable, at-rest
+encrypted credential file becomes the primary store (written on every
+`login`/`key` operation), the OS keyring at most a cache in front of it
+(AR11 session TTL already exists for exactly that role); a config or
+`login --store file|keyring` switch is acceptable only if the default is
+the durable one. Measure before the form: which of Kenny's machines have
+a keyring that outlives a reboot at all (Garuda: no; LXC: no; WSL: to
+be measured) — FORM_PROTOCOL §5.6.
+**Interim on the workstation (dual-boot build, 2026-09-26):** keys and
+PAT are exported once with `latch key show` into an env file inside the
+Syncthing-synced `~/.secrets/latch/` (env vars win the chain, K4), so
+latch works on both sides today. That is a workaround; this mini-round
+is the fix, and closing it removes the env file.
+**Proof that closes it:** on the workstation, `latch state` reads every
+key as present after a reboot into the OTHER OS with no restore step and
+no env override.
 
 ## Closed
 
