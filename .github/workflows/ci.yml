@@ -37,6 +37,11 @@ jobs:
           toolchain: "1.97"
       - name: build for Windows
         run: cargo build -p latch-core -p latch-cli -p latch-ui
+      # fix-win-keyring-1: the one runtime fact CI can prove on Windows —
+      # a stored credential reaches the real Credential Manager, not the
+      # keyring crate's in-memory mock.
+      - name: Windows credential store round trip
+        run: cargo test -p latch-core --test fix_win_keyring_1_tests
 
   # AR16: the pinned minimum supported Rust version must keep building —
   # a dependency bump that silently raises the bar fails here, not on a

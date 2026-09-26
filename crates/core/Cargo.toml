@@ -25,6 +25,12 @@ x25519-dalek.workspace = true
 zeroize.workspace = true
 minisign-verify.workspace = true
 
+# fix-win-keyring-1: without this feature keyring 3 silently falls back to
+# its in-memory mock store on Windows, so nothing reached the Credential
+# Manager and every stored credential vanished with the process.
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
 [dev-dependencies]
 tempdir = "0.3"
 hex.workspace = true
