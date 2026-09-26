@@ -83,6 +83,21 @@ checklist §1 on the real machine with the next release shows a `latch`
 entry in the Credential Manager and no PAT prompt on the second command.
 Correction form sent 2026-09-26, answer pending.
 
+### fix-win-paths-1 · Windows OS paths split on `/` only — OPENED 2026-09-26
+**Found:** on the full Windows run with the v2.5.0 release binary. A
+`sub\.env` was never discovered (the walk returned `sub\.env`, discovery
+matched the file name against the whole string), `latch init` named the
+project after the whole path, `latch path` suggested a bash `export`.
+**Where else:** searched every `split`/`rsplit`/`split_once` on `/` or
+`:` in crates/core, cli and ui; the other 15 hits split repository paths,
+which are `/`-separated by design. Only the walk, init and path_report
+take a path from the OS.
+**Fixed on branch `fix-windows-paths`** with `fix_win_paths_1_tests.rs`,
+which also runs in the Windows CI job.
+**Proof that closes it:** the Windows CI job passes, and with the signed
+2.5.1 a nested `.env` shows up in `latch status` on DESKTOP-KENNY.
+Correction form sent 2026-09-26, answer pending.
+
 ## Closed
 
 ### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots — CLOSED 2026-09-02

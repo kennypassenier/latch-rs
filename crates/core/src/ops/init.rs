@@ -40,7 +40,9 @@ pub fn run(p: &Platform, dir: &str, name: Option<String>) -> Result<InitOutcome,
     }
 
     let project = name.unwrap_or_else(|| {
-        dir.rsplit('/')
+        // fix-win-paths-1: an OS path, so both separators count.
+        dir.trim_end_matches(['/', '\\'])
+            .rsplit(['/', '\\'])
             .next()
             .unwrap_or("project")
             .to_lowercase()

@@ -231,7 +231,15 @@ impl RealFiles {
         for entry in builder.build().flatten() {
             if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 if let Ok(rel) = entry.path().strip_prefix(root) {
-                    out.push(rel.display().to_string());
+                    // fix-win-paths-1: callers treat these as repository
+                    // paths, which are `/`-separated on every OS; on
+                    // Windows `sub\.env` was matched as one file name and
+                    // silently skipped.
+                    let parts: Vec<String> = rel
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                        .collect();
+                    out.push(parts.join("/"));
                 }
             }
         }

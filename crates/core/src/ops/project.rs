@@ -71,8 +71,14 @@ pub struct PathReport {
 /// the shell; core stays ambient-free).
 pub fn install_path(p: &Platform, exe: &str) -> Result<String, LatchError> {
     if let Some(dir) = Config::load(p)?.install_dir {
-        let name = exe.rsplit('/').next().unwrap_or("latch");
-        return Ok(format!("{}/{}", dir.trim_end_matches('/'), name));
+        let name = exe.rsplit(['/', '\\']).next().unwrap_or("latch");
+        let sep = if dir.contains('\\') { '\\' } else { '/' };
+        return Ok(format!(
+            "{}{}{}",
+            dir.trim_end_matches(['/', '\\']),
+            sep,
+            name
+        ));
     }
     Ok(exe.to_string())
 }
@@ -80,17 +86,36 @@ pub fn install_path(p: &Platform, exe: &str) -> Result<String, LatchError> {
 pub fn path_report(p: &Platform, exe: &str) -> Result<PathReport, LatchError> {
     let install = install_path(p, exe)?;
     let dir = install
-        .rsplit_once('/')
+        .rsplit_once(['/', '\\'])
         .map(|(d, _)| d.to_string())
         .unwrap_or_else(|| ".".into());
+    // fix-win-paths-1: Windows separates PATH with `;` and compares
+    // directories without regard to case.
     let on_path = p
         .env
         .var("PATH")
-        .map(|path| path.split(':').any(|seg| seg == dir))
+        .map(|path| {
+            if cfg!(windows) {
+                path.split(';').any(|seg| {
+                    seg.trim_end_matches('\\')
+                        .eq_ignore_ascii_case(dir.trim_end_matches('\\'))
+                })
+            } else {
+                path.split(':').any(|seg| seg == dir)
+            }
+        })
         .unwrap_or(false);
+    let remedy = if cfg!(windows) {
+        format!(
+            "[Environment]::SetEnvironmentVariable('Path', \"{};\" + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')  # PowerShell, then open a new terminal",
+            dir
+        )
+    } else {
+        format!("export PATH=\"{}:$PATH\"  # add to your shell rc", dir)
+    };
     Ok(PathReport {
         install_path: install,
-        remedy: format!("export PATH=\"{}:$PATH\"  # add to your shell rc", dir),
+        remedy,
         on_path,
     })
 }
