@@ -17,6 +17,7 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Next gate | none; docs/PENDING_MINI_ROUNDS.md is empty (M1/M2/M3 closed with evidence). Only the deferred Windows runtime check remains |
 | AFK mode | off |
 | Build state | **v2.4.0 released + signed** (escrow gate D13/D14, update --reinstall D15, keyring namespace per home D16); the installed binary is the signed release build |
+| Next action | waiting on Kenny: he stopped mid-commit to reboot (2026-09-20). `.githooks/trace-inputs.cjs` is modified and unstaged — a verified-identical sync of dev-procedure's `fix-57` (HOOK_VERSION 4 → 5); no other hook differs. Committing it is the whole task, message drafted with `[fix-57]`. After the reboot his latch keys and PAT are gone with the kernel keyring: `latch key restore ~/latch-keys-2026-09-02.latchbk`, never re-mint |
 
 ## Deferred to end-of-project (Kenny-gated)
 
