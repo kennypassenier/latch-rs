@@ -57,6 +57,14 @@ Credential Manager is persistent by design (keyring uses
 `cmdkey` on 2026-09-26 and is read back after the next Windows boot
 (`cmdkey /list:latch-m4-canary`), then deleted
 (`cmdkey /delete:latch-m4-canary`).
+**Decided (Kenny, 2026-09-26 form, item m4-store): "Eén bestand, gedeeld
+via Syncthing".** Every write goes to `credentials.enc` in the latch home;
+a new file is opened by a random machine key `credentials.key` (0600)
+beside it, so nothing prompts; the keyring is read only. The latch home is
+already the Syncthing-shared `~/.secrets/latch`, so storing once serves
+Garuda and WSL. Built for 2.5.0 (`m4_durable_credentials_tests.rs`), to be
+released together with fix-win-keyring-1 and fix-color-1 (item
+release-timing).
 **Proof that closes it:** on the workstation, `latch state` reads every
 key as present after a reboot into the OTHER OS with no restore step and
 no env override.

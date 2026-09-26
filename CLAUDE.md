@@ -16,8 +16,8 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.4.0 released + signed** (escrow gate D13/D14, update --reinstall D15, keyring namespace per home D16); the installed binary is the signed release build |
-| Next action | waiting on Kenny's answers to the 2026-09-26 form (thread "try it now"): m4-store (durable credential design), windows-git (install Git for Windows on DESKTOP-KENNY), release-timing, and two correction items. Work sits on branch `m4-wsl-measurement-windows-check` (fix-color-1, fix-win-keyring-1, WSL keyring survey); not merged to main yet. After the next Windows boot: read back the Credential Manager canary `latch-m4-canary`, then delete it |
+| Build state | **v2.5.0 prepared** on branch `m4-wsl-measurement-windows-check`: M4 durable credential file (every write to `credentials.enc`, machine key `credentials.key`), fix-win-keyring-1, fix-color-1. v2.4.0 is the last signed release |
+| Next action | Kenny answered the 2026-09-26 form: m4-store = one file shared via Syncthing (built), windows-git = Claude installs via winget (done, Git 2.55.0), release-timing = together in 2.5.0, both corrections Klopt. Next: merge, tag v2.5.0, Kenny signs, finish the Windows checklist with the 2.5.0 exe, then move Kenny's credentials from ~/.secrets/latch/env into the file and prove M4 across a reboot into the other OS. Credential Manager canary `latch-m4-canary` still to read back after the next Windows boot |
 
 ## Deferred to end-of-project (Kenny-gated)
 

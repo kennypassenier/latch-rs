@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.5.0 — 2026-09-26
+
+### Changed — BEHAVIOUR (M4 — via mini-round, 2026-09-26)
+- Every credential write (`latch login`, new and rotated keys,
+  `latch key restore`) now goes to the encrypted credential file
+  `~/.latch/credentials.enc`, even where an OS keyring is available. A
+  new file is opened by a random machine key in `~/.latch/credentials.key`
+  (mode 0600), so it never asks for a passphrase. **Why:** the Linux
+  keyring is emptied by every reboot (on WSL already at the end of a
+  terminal session), and that is how the PAT and every project key were
+  lost on 2026-09-02 and again on 2026-09-20. Values an older latch put in
+  the keyring are still read; they move to the file the next time they
+  are written. A file created with `LATCH_PASSPHRASE` keeps using it.
+
+### Fixed
+- fix-win-keyring-1: the Windows build stored credentials in the keyring
+  crate's in-memory mock instead of the Windows Credential Manager, so
+  every credential vanished when the command ended.
+- fix-color-1: `error:` and `warning:` are coloured only when stderr is a
+  terminal and `NO_COLOR` is unset; a pipe or a log file gets plain text.
+
 ## 2.4.0 — 2026-09-02
 
 ### Changed — BEHAVIOUR (D16 — via mini-round, queue item M3)

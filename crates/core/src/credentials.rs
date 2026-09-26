@@ -1,10 +1,13 @@
-//! Credential storage (K4, AR3, AR11): the resolution chain that works
+//! Credential storage (K4, AR3, AR11, M4): the resolution chain that works
 //! everywhere — environment variables win, then the encrypted credential
-//! file, then the OS keyring. Writes go to the keyring where available,
-//! otherwise to the file. The file is one AR10 envelope holding a JSON
-//! slot map, keyed by an Argon2 passphrase; a tmpfs session cache (AR11)
-//! keeps the derived key for a TTL so interactive use prompts once, not
-//! per command.
+//! file, then the OS keyring. Writes always go to the file (M4, 2026-09-26):
+//! the keyring on every Linux machine Kenny runs forgets at reboot (on WSL
+//! already at the end of a session), so it is only read, never written.
+//! The file is one AR10 envelope holding a JSON slot map, keyed by Argon2
+//! over a passphrase. A new file is opened by a random machine key kept
+//! beside it (`credentials.key`, mode 0600) so nothing ever prompts; a file
+//! created with a passphrase keeps prompting, with the tmpfs session cache
+//! (AR11) holding the derived key for a TTL.
 //!
 //! Slot names: `pat` (GitHub token), `key:<project>`,
 //! `key:<project>.<env>`, `group:<name>.<env>` — the env-var override for
@@ -19,6 +22,9 @@ use crate::kdf::{self, SALT_LEN};
 use crate::platform::Platform;
 
 pub const CRED_FILE: &str = "credentials.enc";
+/// M4: the random secret that opens a credential file created without a
+/// passphrase. Lives in the latch home next to the file it opens.
+pub const MACHINE_KEY_FILE: &str = "credentials.key";
 const CRED_KEY_LABEL: &str = "latch-credentials";
 /// Default AR11 session TTL in seconds; 0 disables caching.
 pub const DEFAULT_SESSION_TTL: u64 = 15 * 60;
@@ -108,6 +114,19 @@ impl<'a> CredStore<'a> {
         format!("{}/{}", self.p.latch_home, CRED_FILE)
     }
 
+    fn machine_key_path(&self) -> String {
+        format!("{}/{}", self.p.latch_home, MACHINE_KEY_FILE)
+    }
+
+    fn read_machine_key(&self) -> Result<Option<String>, LatchError> {
+        Ok(self
+            .p
+            .files
+            .read(&self.machine_key_path())?
+            .map(|raw| String::from_utf8_lossy(&raw).trim().to_string())
+            .filter(|k| !k.is_empty()))
+    }
+
     fn session_path(&self) -> Option<String> {
         self.p
             .runtime_dir
@@ -147,23 +166,17 @@ impl<'a> CredStore<'a> {
         Ok(None)
     }
 
-    /// Store a slot. D2b: if a credential FILE already exists, write
-    /// there — reads consult env → file → keyring in that order, so once
-    /// the file holds a slot a keyring write would be shadowed forever
-    /// (the ssh-session split-brain bug: a key created headless lands in
-    /// the file, then a desktop rotation writes the keyring but reads keep
-    /// returning the stale file copy). Writing to whichever backend reads
-    /// will consult keeps them from disagreeing. Otherwise keyring where
-    /// available, else create the file.
+    /// Store a slot. M4 (2026-09-26): always in the FILE, the one store
+    /// that survives a reboot on every machine. The keyring used to take
+    /// writes whenever it was up, and on Linux it forgets at reboot, which
+    /// is how the PAT and every project key vanished twice. Writing where
+    /// reads look first also keeps D2b's guarantee: the file shadows the
+    /// keyring, so the two can never disagree about a slot.
     pub fn set(&self, slot: &str, value: &[u8]) -> Result<Source, LatchError> {
-        if self.file_exists()? || !self.p.keyring.available() {
-            let (mut map, salt, key) = self.open_or_create_file()?;
-            map.slots.insert(slot.into(), hex::encode(value));
-            self.write_file_map(&map, &salt, &key)?;
-            return Ok(Source::File);
-        }
-        self.p.keyring.set(slot, value)?;
-        Ok(Source::Keyring)
+        let (mut map, salt, key) = self.open_or_create_file()?;
+        map.slots.insert(slot.into(), hex::encode(value));
+        self.write_file_map(&map, &salt, &key)?;
+        Ok(Source::File)
     }
 
     pub fn delete(&self, slot: &str) -> Result<(), LatchError> {
@@ -231,13 +244,25 @@ impl<'a> CredStore<'a> {
             })?;
             return Ok((map, cf.salt, key));
         }
-        // First use: create with a new salt and a passphrase.
+        // First use: create with a new salt. An explicit LATCH_PASSPHRASE
+        // still chooses a passphrase file; otherwise M4 mints a machine key
+        // so the file never prompts.
         use zeroize::Zeroize;
         let mut passphrase = match self.p.env.var("LATCH_PASSPHRASE") {
             Some(p) => p,
-            None => self.p.prompt.passphrase(
-                "no OS keyring here — set a passphrase for the latch credential file",
-            )?,
+            None => match self.read_machine_key()? {
+                Some(k) => k,
+                None => {
+                    let mut raw = [0u8; KEY_LEN];
+                    fill_random(&mut raw);
+                    let k = hex::encode(raw);
+                    raw.zeroize();
+                    self.p
+                        .files
+                        .write_atomic(&self.machine_key_path(), k.as_bytes())?;
+                    k
+                }
+            },
         };
         let mut salt = [0u8; SALT_LEN];
         fill_random(&mut salt);
@@ -274,7 +299,8 @@ impl<'a> CredStore<'a> {
     }
 
     /// AR11: derived-key session cache in tmpfs. Env passphrase bypasses
-    /// everything; a fresh prompt refreshes the cache.
+    /// everything, then the cache, then the M4 machine key; only a
+    /// passphrase file without any of those prompts.
     fn unlock_key(&self, salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN], LatchError> {
         use zeroize::Zeroize;
         if let Some(mut p) = self.p.env.var("LATCH_PASSPHRASE") {
@@ -284,6 +310,16 @@ impl<'a> CredStore<'a> {
         }
         if let Some(cached) = self.read_session_key()? {
             return Ok(cached);
+        }
+        // M4: a file minted with a machine key opens without a prompt. The
+        // key is only ever created together with a new file, so where it
+        // exists it is the one that file was sealed with.
+        if let Some(mut k) = self.read_machine_key()? {
+            let key = kdf::derive_key(&k, salt);
+            k.zeroize();
+            let key = key?;
+            self.cache_session_key(&key)?;
+            return Ok(key);
         }
         let mut passphrase = self
             .p

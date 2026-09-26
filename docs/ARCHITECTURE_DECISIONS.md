@@ -24,6 +24,18 @@ with an Argon2-derived key from a single passphrase. Same format serves K6
 key backups. *(Why: one code path, no extra dependencies, consistent with
 the secrets crypto.)*
 
+*Amended 2026-09-26 (mini-round M4):* the file is the store every write
+goes to, on every machine, and a file created without `LATCH_PASSPHRASE`
+is opened by a random machine key beside it (`~/.latch/credentials.key`,
+mode 0600) instead of a passphrase. Why: the keyring outlives a reboot on
+none of Kenny's Linux machines (Garuda, the LXCs, WSL — which has no
+persistent keyring at all), so credentials written there vanished twice.
+Kenny chose "one file, shared via Syncthing": the latch home is already
+the folder Syncthing shares between Garuda and WSL, so storing once
+serves both. Protection at rest is now the folder's permissions and the
+hub's encryption, the same as the ssh key beside it; the passphrase
+remains available for a file created with `LATCH_PASSPHRASE`.
+
 ## AR4 · v1 migration: clean break
 The secrets repo is refilled fresh from working machines; v2 never parses
 v1 formats. Old history remains in git as an archive. *(Kenny's call:
@@ -69,6 +81,10 @@ First unlock caches the opened credentials in `/run/user/…` (RAM, gone at
 reboot) with a configurable TTL (default 15 min; 0 = always prompt).
 Scripts use env injection and never touch the cache. *(sudo-like balance
 of safety and sanity.)*
+
+*Amended 2026-09-26 (M4):* the cache and the prompt now apply only to a
+credential file created with a passphrase; a machine-key file never
+prompts.
 
 ## AR12 · Concurrency: file lock around mutations
 Mutating operations take `~/.latch/lock`; a second process waits with a
