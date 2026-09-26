@@ -16,8 +16,8 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | v2.5.0 tagged 2026-09-26 (M4 durable credentials, fix-win-keyring-1, fix-color-1), NOT signed. v2.5.1 prepared on branch `fix-windows-paths` (fix-win-paths-1). v2.4.0 is the last signed release |
-| Next action | waiting on Kenny's answer to the 2026-09-26 merge/correction form for fix-win-paths-1 (PR `fix-windows-paths` → tag v2.5.1). Then Kenny signs v2.5.1 in a WSL terminal after GARUDA.md step 1 moves the minisign key; then Claude installs the signed build, moves the credentials from ~/.secrets/latch/env into credentials.enc, and proves M4 across a reboot into the other OS. Windows checklist §5 (self-update) waits on that signature. Credential Manager canary `latch-m4-canary`: read back after the next Windows boot, then delete |
+| Build state | **v2.5.1 tagged 2026-09-27** (M4 durable credential file, fix-win-keyring-1, fix-color-1, fix-win-paths-1, fix-remove-escrow-1), NOT signed yet; v2.5.0 tagged and deliberately left unsigned. v2.4.0 is the last signed release; the installed binary is still 2.4.0 |
+| Next action | Kenny signs v2.5.1 only: after GARUDA.md step 1 moves the minisign key into the shared secrets folder, `scripts/sign-release.sh v2.5.1` in a WSL terminal (asks the key password, no admin). Then Claude: `latch update` to the signed 2.5.1 (also checklist §5 on Windows + nested-.env recheck), move the credentials from ~/.secrets/latch/env into credentials.enc, prove M4 across a reboot into the other OS, retire the env file. Credential Manager canary `latch-m4-canary`: read back after the next Windows boot, then delete |
 
 ## Deferred to end-of-project (Kenny-gated)
 
