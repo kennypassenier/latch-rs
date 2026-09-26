@@ -61,6 +61,20 @@ Credential Manager is persistent by design (keyring uses
 key as present after a reboot into the OTHER OS with no restore step and
 no env override.
 
+### fix-win-keyring-1 · The Windows build never reached the Credential Manager — OPENED 2026-09-26
+**Found:** on the Windows runtime check with the signed v2.4.0 binary,
+`latch key restore` reported one credential restored, the next
+`latch state` read `PAT : MISSING`, and `cmdkey /list` held no latch
+entry. keyring 3 falls back to its in-memory mock store on Windows unless
+`windows-native` is enabled, and latch-core enabled only `linux-native`.
+**Fixed on branch `m4-wsl-measurement-windows-check`:** the cfg(windows)
+dependency table enables `windows-native`; a manifest test guards it on
+Linux, a round-trip test runs in the Windows CI job.
+**Proof that closes it:** the Windows CI job passes the round trip, and
+checklist §1 on the real machine with the next release shows a `latch`
+entry in the Credential Manager and no PAT prompt on the second command.
+Correction form sent 2026-09-26, answer pending.
+
 ## Closed
 
 ### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots — CLOSED 2026-09-02

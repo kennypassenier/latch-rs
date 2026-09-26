@@ -17,7 +17,7 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
 | Build state | **v2.4.0 released + signed** (escrow gate D13/D14, update --reinstall D15, keyring namespace per home D16); the installed binary is the signed release build |
-| Next action | M4 (durable credentials, docs/PENDING_MINI_ROUNDS.md): the keyring survey is complete (Garuda no, LXC no, WSL no — WSL has no persistent keyring at all, measured 2026-09-26); the mini-round form is next. Windows checklist ran partly on 2026-09-26 (run log in docs/WINDOWS_TEST_CHECKLIST.md); the rest needs Git for Windows on that machine. Read back the Credential Manager canary `latch-m4-canary` after the next Windows boot |
+| Next action | waiting on Kenny's answers to the 2026-09-26 form (thread "try it now"): m4-store (durable credential design), windows-git (install Git for Windows on DESKTOP-KENNY), release-timing, and two correction items. Work sits on branch `m4-wsl-measurement-windows-check` (fix-color-1, fix-win-keyring-1, WSL keyring survey); not merged to main yet. After the next Windows boot: read back the Credential Manager canary `latch-m4-canary`, then delete it |
 
 ## Deferred to end-of-project (Kenny-gated)
 
