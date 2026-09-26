@@ -40,6 +40,23 @@ PAT are exported once with `latch key show` into an env file inside the
 Syncthing-synced `~/.secrets/latch/` (env vars win the chain, K4), so
 latch works on both sides today. That is a workaround; this mini-round
 is the fix, and closing it removes the env file.
+**Measured on WSL (2026-09-26, Windows 11 + WSL2 Arch, kernel
+6.18.33.2-microsoft-standard-WSL2):** the keyring does not even outlive
+a terminal, let alone a restart.
+- `keyctl get_persistent @s` → `Operation not supported`: the WSL kernel
+  has no persistent keyring, so the keyring crate's `linux-native`
+  backend can only link a key into the session keyring.
+- A key added inside `keyctl session m4scratch` was readable there and
+  gone from the next session (`keyctl search @s` and `@u` →
+  `Required key not available`).
+- `journalctl --list-boots` lists two boots on 2026-09-26 alone: every
+  WSL restart is a new kernel, and kernel keyrings live only in RAM.
+So the survey is complete: Garuda no, LXC no, WSL no. On Windows the
+Credential Manager is persistent by design (keyring uses
+`CRED_PERSIST_ENTERPRISE`); a canary `latch-m4-canary` was stored with
+`cmdkey` on 2026-09-26 and is read back after the next Windows boot
+(`cmdkey /list:latch-m4-canary`), then deleted
+(`cmdkey /delete:latch-m4-canary`).
 **Proof that closes it:** on the workstation, `latch state` reads every
 key as present after a reboot into the OTHER OS with no restore step and
 no env override.

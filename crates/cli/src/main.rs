@@ -403,7 +403,8 @@ fn main() {
                 // whose secrets were never stored still looks fine.
                 if out.files.is_empty() && out.removed.is_empty() {
                     eprintln!(
-                        "\x1b[33mwarning:\x1b[0m {}",
+                        "{} {}",
+                        label("33", "warning:"),
                         latch_core::discovery::no_files_hint(&cwd)
                     );
                 }
@@ -933,7 +934,8 @@ fn main() {
                 }
                 if out.entries.is_empty() {
                     eprintln!(
-                        "\x1b[33mwarning:\x1b[0m {}",
+                        "{} {}",
+                        label("33", "warning:"),
                         latch_core::discovery::no_files_hint(&cwd)
                     );
                 }
@@ -943,7 +945,7 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("\x1b[31merror:\x1b[0m {e}");
+        eprintln!("{} {e}", label("31", "error:"));
         std::process::exit(1);
     }
 }
@@ -964,4 +966,15 @@ fn login(
         out.repo, where_
     );
     Ok(())
+}
+
+/// fix-color-1: paint a stderr label only when stderr is a terminal and
+/// NO_COLOR is unset; a pipe or a log file gets the plain word.
+fn label(code: &str, text: &str) -> String {
+    use std::io::IsTerminal;
+    if std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }

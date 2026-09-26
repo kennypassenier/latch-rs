@@ -65,3 +65,20 @@ the built-in `curl` and OpenSSH client (Windows 10+/11 have both), and the
 Record anything that fails here as a bug → it becomes a test before the
 fix (standing rule 8). Path handling and the external-tool calls are the
 most likely to surprise.
+
+## Run log
+
+### 2026-09-26 — partial run, Windows 11 (NT 10.0.26200), latch 2.4.0
+Driven from WSL through interop against `latch-x86_64-pc-windows-msvc.exe`
+from the v2.4.0 release (SHA256 and minisign signature verified), with a
+scratch `LATCH_HOME` under `%TEMP%\latch-wincheck`.
+- §1 partly: `latch state` → `keyring : available`. Login blocked: Git for
+  Windows is not installed on this machine, and latch refuses cleanly with
+  `spawn git: program not found :: is 'git' installed and on PATH?`.
+- §2, §4, §5: not run — all need `git` on PATH.
+- §3: `latch edit` outside a project refuses before reaching the WA
+  message; the WA text itself still needs a bound project.
+- §6: passed. `%USERPROFILE%` ACL grants only SYSTEM, Administrators and
+  the user (plus an AppContainer SID with execute-only).
+- Found: `error:`/`warning:` labels printed raw ANSI escapes into a
+  redirected stderr → fix-color-1 (test first, then fix).
