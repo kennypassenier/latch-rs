@@ -8,6 +8,8 @@
   and self-update always replaces the running binary. The running binary
   is now moved aside first (allowed on Windows) and the new one takes its
   place; the moved-aside file is removed at once or at the next update.
+  The old binary runs the update, so a Windows build before 2.5.2 still
+  cannot update itself: replace it by hand once.
 
 ## 2.5.1 — 2026-09-26
 

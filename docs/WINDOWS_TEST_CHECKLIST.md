@@ -107,3 +107,15 @@ Git for Windows 2.55.0 installed with winget, scratch `LATCH_HOME` under
 - §5 open: needs a signed release newer than the installed build.
 - §6 passed earlier the same day.
 - Found: `latch path` suggested `export PATH=".:$PATH"` → fix-win-paths-1.
+
+### 2026-09-27 — §5 and the path recheck, latch 2.5.1 / 2.5.2
+- Path recheck with the signed 2.5.1 passed: default project name
+  `nested-app`, `sub/.env` listed, PowerShell remedy from `latch path`.
+- §5 found fix-win-update-1: 2.4.0 → 2.5.1 failed with "Access is
+  denied". Fixed in 2.5.2. The updater that runs is the OLD binary, so
+  a Windows build before 2.5.2 still cannot update itself: replace it by
+  hand once (download `latch-x86_64-pc-windows-msvc.exe`).
+- §5 passed with the signed 2.5.2: `latch update --reinstall` fetched,
+  verified the minisign signature and replaced the running exe; the
+  previous binary sat at `latch.exe.prev`, the moved-aside one at
+  `latch.exe.old` (cleared at the next update). Tamper test not run.

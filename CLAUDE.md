@@ -16,16 +16,16 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.5.1 tagged 2026-09-27** (M4 durable credential file, fix-win-keyring-1, fix-color-1, fix-win-paths-1, fix-remove-escrow-1), NOT signed yet; v2.5.0 tagged and deliberately left unsigned. v2.4.0 is the last signed release; the installed binary is still 2.4.0 |
-| Next action | Kenny signs v2.5.1 only: after GARUDA.md step 1 moves the minisign key into the shared secrets folder, `scripts/sign-release.sh v2.5.1` in a WSL terminal (asks the key password, no admin). Then Claude: `latch update` to the signed 2.5.1 (also checklist §5 on Windows + nested-.env recheck), move the credentials from ~/.secrets/latch/env into credentials.enc, prove M4 across a reboot into the other OS, retire the env file. Credential Manager canary `latch-m4-canary`: read back after the next Windows boot, then delete |
+| Build state | **v2.5.2 released + signed 2026-09-27**, installed on WSL through `latch update`. ws-tools keeps latch on the signed release on Garuda and WSL (workstation 282ce2e). Windows runtime-verified 2026-09-27 (checklist §1-§6, docs/WINDOWS_TEST_CHECKLIST.md run log; §4 `clone --to` and the §5 tamper test not run). v2.5.0 deliberately unsigned |
+| Next action | M4 only: credentials are in credentials.enc (2026-09-27). Once Garuda runs 2.5.x through ws-tools (`resume`), retire ~/.secrets/latch/env and read `latch state` without env after a reboot into the other OS — that closes M4 |
 
 ## Deferred to end-of-project (Kenny-gated)
 
-- **Windows 11 runtime verification** — the Windows machine is only
-  reachable at the end of the project. The code is cross-platform and CI
-  builds it on windows-latest, but `docs/WINDOWS_TEST_CHECKLIST.md` must
-  be run on the real Win11 machine before Windows is "verified". Do not
-  treat Windows as runtime-confirmed until then.
+- ~~**Windows 11 runtime verification**~~ — done 2026-09-27 on
+  DESKTOP-KENNY with the signed 2.5.1/2.5.2 (run log in
+  `docs/WINDOWS_TEST_CHECKLIST.md`); four Windows faults found and fixed on
+  the way (fix-win-keyring-1, fix-win-paths-1, fix-remove-escrow-1,
+  fix-win-update-1). Not run: `clone --to` from Windows, the §5 tamper test.
 - ~~**RELEASE_PUBKEY**~~ — done: the real minisign public key is baked
   into `crates/core/src/ops/update.rs` (commit a39fe19). Every release
   still needs `scripts/sign-release.sh <tag>` afterwards, or
