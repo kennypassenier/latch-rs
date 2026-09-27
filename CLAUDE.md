@@ -16,8 +16,8 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.5.1 tagged 2026-09-27** (M4 durable credential file, fix-win-keyring-1, fix-color-1, fix-win-paths-1, fix-remove-escrow-1), NOT signed yet; v2.5.0 tagged and deliberately left unsigned. v2.4.0 is the last signed release; the installed binary is still 2.4.0 |
-| Next action | Kenny signs v2.5.1 only: after GARUDA.md step 1 moves the minisign key into the shared secrets folder, `scripts/sign-release.sh v2.5.1` in a WSL terminal (asks the key password, no admin). Then Claude: `latch update` to the signed 2.5.1 (also checklist §5 on Windows + nested-.env recheck), move the credentials from ~/.secrets/latch/env into credentials.enc, prove M4 across a reboot into the other OS, retire the env file. Credential Manager canary `latch-m4-canary`: read back after the next Windows boot, then delete |
+| Build state | **v2.5.2 tagged 2026-09-27** (fix-win-update-1), NOT signed yet. v2.5.1 signed and installed on WSL (release build, via `latch update`); ws-tools keeps latch on the signed release on Garuda and WSL (workstation 282ce2e). v2.5.0 deliberately unsigned |
+| Next action | Kenny signs v2.5.2 (`scripts/sign-release.sh v2.5.2`, WSL terminal, key password). Then Claude: checklist §5 on DESKTOP-KENNY (2.5.1 exe updates itself to 2.5.2), `latch update` on WSL. M4: credentials already in credentials.enc; once Garuda runs 2.5.x through ws-tools, retire ~/.secrets/latch/env and read `latch state` without env after a reboot — that closes M4 |
 
 ## Deferred to end-of-project (Kenny-gated)
 

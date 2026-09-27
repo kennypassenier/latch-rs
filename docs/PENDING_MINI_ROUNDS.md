@@ -56,7 +56,8 @@ Credential Manager is persistent by design (keyring uses
 `CRED_PERSIST_ENTERPRISE`); a canary `latch-m4-canary` was stored with
 `cmdkey` on 2026-09-26 and is read back after the next Windows boot
 (`cmdkey /list:latch-m4-canary`), then deleted
-(`cmdkey /delete:latch-m4-canary`).
+(`cmdkey /delete:latch-m4-canary`). **Read back 2026-09-27:** Windows
+booted at 04:51 CEST and the canary was still there; deleted afterwards.
 **Decided (Kenny, 2026-09-26 form, item m4-store): "Eén bestand, gedeeld
 via Syncthing".** Every write goes to `credentials.enc` in the latch home;
 a new file is opened by a random machine key `credentials.key` (0600)
@@ -65,6 +66,12 @@ already the Syncthing-shared `~/.secrets/latch`, so storing once serves
 Garuda and WSL. Built for 2.5.0 (`m4_durable_credentials_tests.rs`), to be
 released together with fix-win-keyring-1 and fix-color-1 (item
 release-timing).
+**Migrated 2026-09-27 (2.5.1 on WSL):** the PAT and the four project keys
+were moved from the interim env file into `~/.latch/credentials.enc`
+(scratch escrow backup → restore, shredded after); `latch state` and
+`latch status` in almanac read them from the file in a shell with no
+environment. The env file stays until Garuda runs 2.5.x (ws-tools, source
+`release`), because 2.4.0 does not know the machine key.
 **Proof that closes it:** on the workstation, `latch state` reads every
 key as present after a reboot into the OTHER OS with no restore step and
 no env override.
@@ -83,7 +90,7 @@ checklist §1 on the real machine with the next release shows a `latch`
 entry in the Credential Manager and no PAT prompt on the second command.
 Correction form approved by Kenny (Klopt), 2026-09-26.
 
-### fix-win-paths-1 · Windows OS paths split on `/` only — OPENED 2026-09-26
+### fix-win-paths-1 · Windows OS paths split on `/` only — OPENED 2026-09-26, CLOSED 2026-09-27
 **Found:** on the full Windows run with the v2.5.0 release binary. A
 `sub\.env` was never discovered (the walk returned `sub\.env`, discovery
 matched the file name against the whole string), `latch init` named the
@@ -96,6 +103,9 @@ take a path from the OS.
 which also runs in the Windows CI job.
 **Proof that closes it:** the Windows CI job passes, and with the signed
 2.5.1 a nested `.env` shows up in `latch status` on DESKTOP-KENNY.
+**Proven 2026-09-27:** with the signed 2.5.1 on DESKTOP-KENNY, `latch init`
+named `...\Nested_App` `nested-app`, `latch status` listed `sub/.env`, and
+`latch path` gave the PowerShell remedy.
 Correction form approved by Kenny (Klopt), 2026-09-26.
 
 ### fix-remove-escrow-1 · `project remove` left the escrow record behind — OPENED 2026-09-26
@@ -119,6 +129,8 @@ PING.EXE; it failed on the Windows CI job with the same error before the
 fix (run 36290783967).
 **Proof that closes it:** the Windows CI job passes, and `latch update`
 from 2.5.1 to the signed 2.5.2 on DESKTOP-KENNY succeeds.
+Correction form approved by Kenny (Klopt), 2026-09-27; CI passed after
+the fix.
 
 ## Closed
 
