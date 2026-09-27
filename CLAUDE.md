@@ -17,7 +17,7 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
 | Build state | **v2.5.2 released + signed 2026-09-27**, installed on WSL through `latch update`. ws-tools keeps latch on the signed release on Garuda and WSL (workstation 282ce2e). Windows runtime-verified 2026-09-27 (checklist §1-§6, docs/WINDOWS_TEST_CHECKLIST.md run log; §4 `clone --to` and the §5 tamper test not run). v2.5.0 deliberately unsigned |
-| Next action | M4 only: credentials are in credentials.enc (2026-09-27). Once Garuda runs 2.5.x through ws-tools (`resume`), retire ~/.secrets/latch/env and read `latch state` without env after a reboot into the other OS — that closes M4 |
+| Next action | waiting on Kenny: booting Garuda once and running `resume` there, so ws-tools (source `release`) brings Garuda's latch to the signed 2.5.x. Then Claude retires ~/.secrets/latch/env and reads `latch state` without env after a reboot into the other OS — that closes M4. Credentials are in credentials.enc since 2026-09-27 |
 
 ## Deferred to end-of-project (Kenny-gated)
 
