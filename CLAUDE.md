@@ -16,16 +16,16 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.5.2 tagged 2026-09-27** (fix-win-update-1), NOT signed yet. v2.5.1 signed and installed on WSL (release build, via `latch update`); ws-tools keeps latch on the signed release on Garuda and WSL (workstation 282ce2e). v2.5.0 deliberately unsigned |
-| Next action | Kenny signs v2.5.2 (`scripts/sign-release.sh v2.5.2`, WSL terminal, key password). Then Claude: checklist §5 on DESKTOP-KENNY (2.5.1 exe updates itself to 2.5.2), `latch update` on WSL. M4: credentials already in credentials.enc; once Garuda runs 2.5.x through ws-tools, retire ~/.secrets/latch/env and read `latch state` without env after a reboot — that closes M4 |
+| Build state | **v2.5.2 released + signed 2026-09-27**, installed on WSL through `latch update`. ws-tools keeps latch on the signed release on Garuda and WSL (workstation 282ce2e). Windows runtime-verified 2026-09-27 (checklist §1-§6, docs/WINDOWS_TEST_CHECKLIST.md run log; §4 `clone --to` and the §5 tamper test not run). v2.5.0 deliberately unsigned |
+| Next action | M4 only: credentials are in credentials.enc (2026-09-27). Once Garuda runs 2.5.x through ws-tools (`resume`), retire ~/.secrets/latch/env and read `latch state` without env after a reboot into the other OS — that closes M4 |
 
 ## Deferred to end-of-project (Kenny-gated)
 
-- **Windows 11 runtime verification** — the Windows machine is only
-  reachable at the end of the project. The code is cross-platform and CI
-  builds it on windows-latest, but `docs/WINDOWS_TEST_CHECKLIST.md` must
-  be run on the real Win11 machine before Windows is "verified". Do not
-  treat Windows as runtime-confirmed until then.
+- ~~**Windows 11 runtime verification**~~ — done 2026-09-27 on
+  DESKTOP-KENNY with the signed 2.5.1/2.5.2 (run log in
+  `docs/WINDOWS_TEST_CHECKLIST.md`); four Windows faults found and fixed on
+  the way (fix-win-keyring-1, fix-win-paths-1, fix-remove-escrow-1,
+  fix-win-update-1). Not run: `clone --to` from Windows, the §5 tamper test.
 - ~~**RELEASE_PUBKEY**~~ — done: the real minisign public key is baked
   into `crates/core/src/ops/update.rs` (commit a39fe19). Every release
   still needs `scripts/sign-release.sh <tag>` afterwards, or
