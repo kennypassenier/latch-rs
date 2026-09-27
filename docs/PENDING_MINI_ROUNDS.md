@@ -75,13 +75,13 @@ no env override.
 `latch state` read `PAT : MISSING`, and `cmdkey /list` held no latch
 entry. keyring 3 falls back to its in-memory mock store on Windows unless
 `windows-native` is enabled, and latch-core enabled only `linux-native`.
-**Fixed on branch `m4-wsl-measurement-windows-check`:** the cfg(windows)
+**Fixed in 2.5.0 (PR #25):** the cfg(windows)
 dependency table enables `windows-native`; a manifest test guards it on
 Linux, a round-trip test runs in the Windows CI job.
 **Proof that closes it:** the Windows CI job passes the round trip, and
 checklist §1 on the real machine with the next release shows a `latch`
 entry in the Credential Manager and no PAT prompt on the second command.
-Correction form sent 2026-09-26, answer pending.
+Correction form approved by Kenny (Klopt), 2026-09-26.
 
 ### fix-win-paths-1 · Windows OS paths split on `/` only — OPENED 2026-09-26
 **Found:** on the full Windows run with the v2.5.0 release binary. A
@@ -92,21 +92,22 @@ project after the whole path, `latch path` suggested a bash `export`.
 `:` in crates/core, cli and ui; the other 15 hits split repository paths,
 which are `/`-separated by design. Only the walk, init and path_report
 take a path from the OS.
-**Fixed on branch `fix-windows-paths`** with `fix_win_paths_1_tests.rs`,
+**Fixed in 2.5.1 (PR #26)** with `fix_win_paths_1_tests.rs`,
 which also runs in the Windows CI job.
 **Proof that closes it:** the Windows CI job passes, and with the signed
 2.5.1 a nested `.env` shows up in `latch status` on DESKTOP-KENNY.
-Correction form sent 2026-09-26, answer pending.
+Correction form approved by Kenny (Klopt), 2026-09-26.
 
 ### fix-remove-escrow-1 · `project remove` left the escrow record behind — OPENED 2026-09-26
 **Found:** after removing the scratch project `wincheck` from the Windows
 check, `_escrow/wincheck.json` stayed in `kennypassenier/secrets`.
-**Fixed on branch `fix-windows-paths`:** remove deletes
+**Fixed in 2.5.1 (PR #26):** remove deletes
 `_escrow/<name>.json` in the same commit; asserted in
 `d9_project_remove_tests.rs`. The orphan record was removed from the
 secrets repo by hand.
 **Proof that closes it:** the next real `latch project remove` leaves no
 `_escrow/<name>.json` on the remote.
+Correction form approved by Kenny (Klopt), 2026-09-27.
 
 ### fix-win-update-1 · Self-update could not replace the running exe on Windows — OPENED 2026-09-27
 **Found:** checklist §5 on DESKTOP-KENNY, updating the 2.4.0 exe to the
