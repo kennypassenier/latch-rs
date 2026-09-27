@@ -109,6 +109,17 @@ secrets repo by hand.
 `_escrow/<name>.json` on the remote.
 Correction form approved by Kenny (Klopt), 2026-09-27.
 
+### fix-win-update-1 · Self-update could not replace the running exe on Windows — OPENED 2026-09-27
+**Found:** checklist §5 on DESKTOP-KENNY, updating the 2.4.0 exe to the
+signed 2.5.1: "rename to ...\latch.exe: Access is denied. (os error 5)";
+the old exe stayed, with `latch.exe.prev` and `latch.exe.tmp-exe` beside
+it.
+**Test first:** `fix_win_update_1_tests.rs` replaces a running copy of
+PING.EXE; it failed on the Windows CI job with the same error before the
+fix (run 36290783967).
+**Proof that closes it:** the Windows CI job passes, and `latch update`
+from 2.5.1 to the signed 2.5.2 on DESKTOP-KENNY succeeds.
+
 ## Closed
 
 ### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots — CLOSED 2026-09-02
