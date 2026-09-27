@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.2 — 2026-09-27
+
+### Fixed (fix-win-update-1, Windows runtime check §5)
+- `latch update` on Windows failed at the last step with "Access is
+  denied": Windows will not overwrite the image of a running process,
+  and self-update always replaces the running binary. The running binary
+  is now moved aside first (allowed on Windows) and the new one takes its
+  place; the moved-aside file is removed at once or at the next update.
+
 ## 2.5.1 — 2026-09-26
 
 ### Fixed (fix-win-paths-1, found on the Windows runtime check)

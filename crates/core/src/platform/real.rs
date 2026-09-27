@@ -122,8 +122,32 @@ impl Files for RealFiles {
             })?;
             f.sync_all().ok();
         }
+        // fix-win-update-1: Windows refuses to overwrite the image of a
+        // running process, and self-update always replaces the running
+        // binary. Moving it aside is allowed, so do that first; the moved
+        // file is removed now if nothing runs it, else at the next update.
+        #[cfg(windows)]
+        {
+            let aside = format!("{}.old", path);
+            let _ = std::fs::remove_file(&aside);
+            if p.exists() {
+                std::fs::rename(path, &aside).map_err(|e| {
+                    LatchError::other(format!("move {} aside: {}", path, e), "check permissions")
+                })?;
+            }
+            let placed = std::fs::rename(&tmp, path);
+            if placed.is_err() && !p.exists() {
+                // Put the old binary back rather than leave nothing.
+                let _ = std::fs::rename(&aside, path);
+            }
+            let _ = std::fs::remove_file(&aside);
+            placed.map_err(|e| {
+                LatchError::other(format!("rename to {}: {}", path, e), "check permissions")
+            })?;
+        }
         // Rename preserves the 0755 mode, so the binary is executable the
         // instant it appears at `path` — no write-then-chmod window (K1).
+        #[cfg(not(windows))]
         std::fs::rename(&tmp, path).map_err(|e| {
             LatchError::other(format!("rename to {}: {}", path, e), "check permissions")
         })?;
