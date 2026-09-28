@@ -43,6 +43,16 @@ everywhere — this replaces keyring-only, which failed on Kenny's LXCs.
 - **Manual**: full workflow on a keyringless LXC using only the file
   backend, and only env injection.
 
+*Amended 2026-09-26 (mini-round M4, Kenny: one file shared via
+Syncthing):* every write goes to `credentials.enc` on every machine, the
+keyring included machines too; a new file is opened by a random machine
+key `credentials.key` beside it and never prompts. The keyring is read
+only, for values an older latch stored there. The passphrase path stays
+for a file created with `LATCH_PASSPHRASE`. Reason: the keyring outlives
+a reboot on none of Kenny's Linux machines. Proven by
+`m4_durable_credentials_tests.rs`; the order env → file → keyring is
+unchanged.
+
 ### K5 · Key inspection/export (`latch key`) — **Should**
 Show/export a project key (for offline safekeeping).
 - **Auto**: export never prints to a terminal without an explicit

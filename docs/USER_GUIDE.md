@@ -229,7 +229,8 @@ latch state
 ```
 
 Repo, PAT source, keyring availability, credential file, clone presence,
-and per-project key generation + source.
+and per-project key generation + source (`File`, `EnvVar` or `Keyring`)
+plus its escrow state.
 
 ### Reset (W9)
 
@@ -363,13 +364,17 @@ underlying values at their services (the command reminds you).
 ### Self-update (M5) and path (M4)
 
 ```
-latch update              # checksum-verified; previous binary kept at latch.prev
+latch update              # signature- and checksum-verified; previous binary kept at latch.prev
+latch update --reinstall  # same version, but the signed release build
 latch path                # where latch lives + PATH guidance
 ```
 
-Update refuses to replace anything unless the download matches the release
-manifest **and** the new binary runs `--version` correctly. Any failure
-leaves the current install untouched.
+Update refuses to replace anything unless the manifest carries a valid
+minisign signature, the download matches it, **and** the new binary runs
+`--version` correctly. Any failure leaves the current install untouched.
+On Windows a build older than 2.5.2 cannot replace itself; download the
+release exe once by hand. `latch path` prints a PowerShell line on
+Windows and an `export` line elsewhere.
 
 ### Completions (D7)
 
@@ -411,7 +416,7 @@ that supplies the answer. Relevant variables:
 | Variable | Purpose |
 |---|---|
 | `LATCH_PAT` | GitHub token (login/validation) |
-| `LATCH_PASSPHRASE` | credential-file passphrase |
+| `LATCH_PASSPHRASE` | passphrase for a credential file created with one (a new file without it uses the machine key and never prompts) |
 | `LATCH_BACKUP_PASSPHRASE` | K6 backup/restore |
 | `LATCH_KEY_<PROJECT>[_<ENV>]` | project/env key, hex |
 | `LATCH_GROUP_<NAME>_<ENV>` | group key, hex |

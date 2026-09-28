@@ -13,6 +13,8 @@ latch init                         # once per project
 latch commit && latch push         # encrypt + upload
 latch pull                         # anywhere else
 latch run -- docker compose up     # secrets straight into the process
+latch cat api/.env --env prod      # one file to stdout
+echo "$new" | latch put api/.env --env prod --project myapp   # replace one file, nothing else
 ```
 
 ## Why latch
@@ -48,8 +50,10 @@ your OS, or build from source:
 cargo build --release -p latch-cli    # target/release/latch
 ```
 
-Later updates: `latch update` (checksum-verified, keeps the previous
-binary, refuses anything that doesn't provably run).
+Later updates: `latch update` (minisign-signed and checksum-verified,
+keeps the previous binary, refuses anything that doesn't provably run).
+On Windows, builds before 2.5.2 cannot update themselves: download the
+release exe once by hand.
 
 ## Development — enable the commit gates first
 

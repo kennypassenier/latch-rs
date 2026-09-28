@@ -26,10 +26,15 @@ latch project bind myapp --dir ~/code/myapp
 latch pull
 ```
 
+**Two OSes on one machine (dual boot):** point both latch homes at one
+Syncthing-shared folder (on Kenny's workstation `~/.latch` links to
+`~/.secrets/latch`). `credentials.enc` and `credentials.key` travel
+together, so a credential stored on one side is present on the other
+after the next sync; no clone, no restore.
+
 **Orchestrated (no interaction, e.g. a container):**
 
 ```
-export LATCH_PASSPHRASE=...            # file-backend passphrase
 export LATCH_PAT=ghp_...
 export LATCH_KEY_MYAPP=<hex>           # from: latch key show --reveal
 latch login --repo owner/secrets
@@ -99,7 +104,7 @@ and `latch push` refuses while a key has no record (D13, see R14).
 ## R7 · Update latch
 
 ```
-latch update       # gates: manifest checksum + the new binary must run
+latch update       # gates: minisign signature + manifest checksum + the new binary must run
 latch update --reinstall   # same version, but the SIGNED release build
 latch --version
 # regret it?
@@ -116,6 +121,19 @@ manifest, checksum, `.prev` copy and run-probe all apply as usual. On
 Kenny's workstation this is the normal case after a release, because
 development installs with `cargo install --path`.
 
+**Windows:** from 2.5.2 on, `latch update` moves the running `latch.exe`
+aside (`latch.exe.old`, removed at the next update) and puts the new one
+in its place. The update runs in the OLD binary, so a Windows build older
+than 2.5.2 cannot update itself ("Access is denied"): download
+`latch-x86_64-pc-windows-msvc.exe` from the release once by hand. To go
+back, rename `latch.exe.prev` to `latch.exe`.
+
+**Kenny's machines:** `resume` runs the workstation's `bin/ws-tools`,
+which keeps latch on the newest SIGNED release on Garuda and WSL through
+`latch update` (source `release` in `packages/own-tools.txt`); a machine
+without latch gets a one-time source build that is then swapped for the
+signed binary.
+
 ## R8 · Move the secrets repository
 
 1. Create the new private repo on GitHub.
@@ -127,12 +145,17 @@ development installs with `cargo install --path`.
 
 ```
 latch reset                      # clone + session cache gone
-rm -rf ~/.latch                  # config + credential file gone
+rm -rf ~/.latch                  # config, credentials.enc AND credentials.key gone
 ```
 
-Keyring entries (desktops): remove the `latch` service entries via your
-keyring manager. Then rotate any keys that machine held (R2) if the
-machine is leaving your control.
+`credentials.key` opens `credentials.enc`: whoever has both files has
+every credential, so they leave together. If the latch home is a synced
+folder (R1, dual boot), delete it on the sync side too or the next sync
+brings it back. Keyring entries written by a latch older than 2.5.0 can
+still sit in the OS keyring: remove the `latch` service entries via your
+keyring manager (`keyctl` on Linux, Credential Manager on Windows). Then
+rotate any keys that machine held (R2) if the machine is leaving your
+control.
 
 ## R10 · CI / orchestration checklist (M7)
 
@@ -190,6 +213,26 @@ only for sessions opened in this directory; it stays as a second layer.
 
 Bypassing (`git commit --no-verify`) is not part of any procedure here.
 
+## step-1 · Change one secret file from a tool (feat-put-1)
+
+For a caller that holds credentials but no project checkout, like the
+homelab dashboard:
+
+```
+latch cat supersync/.env --env prod --project productivity > /tmp/old   # or keep it in memory
+sum=$(sha256sum < /tmp/old | cut -d' ' -f1)
+printf '%s' "$new_content" | latch put supersync/.env --env prod --project productivity --expect "$sum"
+```
+
+`put` replaces only that file and pushes it; nothing else in the project
+or environment is touched, and no pull is needed. Refusals and what they
+mean: "changed since it was read" (someone else edited it: read again,
+reapply), "the local clone holds unpushed changes" (push or `latch reset`
+first), "no key for project" (bring the key with `latch clone`; put never
+mints one), "group member" (edit through a project that holds the group).
+Never use `latch commit` for this: in a directory holding only some of a
+project's files it records every other file as removed.
+
 ## R14 · Key escrow: the second copy latch insists on (D13)
 
 Since 2.3.0 latch refuses to publish secrets sealed with a key that has
@@ -228,8 +271,13 @@ Rules worth knowing:
 ## R15 · Recover after losing every key (what 2026-09-02 taught)
 
 **Step 0, before anything else: check whether the keys are actually
-gone.** On Linux they live in the kernel keyring, and a fresh login
-session does not attach the persistent one by itself:
+gone.** Since 2.5.0 they live in `~/.latch/credentials.enc`, opened by
+`~/.latch/credentials.key`: check both exist (`ls -l ~/.latch/credentials.*`)
+and, on a synced latch home, whether the other side still has them. The
+file without its key cannot be opened; a restored backup of the folder
+must contain both. Keys stored by a latch older than 2.5.0 may still sit
+only in the Linux kernel keyring, and a fresh login session does not
+attach the persistent one by itself:
 
 ```
 keyctl get_persistent @s        # attach it
@@ -290,9 +338,12 @@ updates.
 ### Per release
 
 ```bash
-git tag v2.x.y && git push --tags        # CI builds Linux + Windows + SHA256SUMS
+# after the release PR is merged (main is branch-protected: CI green and
+# the branch up to date with main), tag the MERGE commit on main:
+git switch main && git pull --ff-only
+git tag v2.x.y && git push origin v2.x.y  # CI builds Linux + Windows + SHA256SUMS
 # wait for the release workflow to finish, then sign locally:
-scripts/sign-release.sh v2.x.y           # Garuda  (or scripts\sign-release.ps1 on Windows)
+scripts/sign-release.sh v2.x.y           # Garuda or WSL (the key is in the shared secrets folder); scripts\sign-release.ps1 on Windows
 ```
 
 CI builds both OS binaries and one `SHA256SUMS`, publishes the Release,
