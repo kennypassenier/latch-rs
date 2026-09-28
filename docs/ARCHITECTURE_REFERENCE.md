@@ -39,6 +39,15 @@ through the real `git` binary:
   never rewritten**, "force" only decides whose content is newest
 - refresh never hard-resets a dirty clone — committed-but-unpushed work
   survives offline round-trips (regression-tested)
+- single-file write (`ops/put.rs`, feat-put-1): refresh (must be current,
+  a dirty clone is refused), seal ONE path, push; a failed push runs
+  `Repo::discard_local` (reset --hard to origin + clean) so no half-done
+  change is left for a later push to carry. It never lists or removes
+  other files, which is the difference from commit.
+- OS paths are split on both `/` and `\`, and the file walk returns
+  `/`-joined relative paths on every OS (fix-win-paths-1): repository
+  paths are `/`-separated by design, and discovery matches file names on
+  them.
 
 Auth travels as an `http.extraHeader` via `GIT_CONFIG_*` environment
 variables — the token never appears in argv or in the clone's config file.
@@ -117,8 +126,14 @@ copies are the encrypted credential file (this chain's middle tier) and
 the K6 escrow — which is why D13 makes publishing depend on an escrow
 existing rather than trusting the keyring. Confidentiality is not
 durability; the keyring only ever provided the first.
-- AR11: the derived key is cached on tmpfs for 15 min so interactive use
-  prompts once, not per command. No tmpfs → no cache, never a disk file.
+- AR11: for a credential file created with a passphrase, the derived key
+  is cached on tmpfs for 15 min so interactive use prompts once, not per
+  command. No tmpfs → no cache, never a disk file. A machine-key file
+  (the M4 default) never prompts, so the cache is moot there.
+- Windows: the keyring is the Credential Manager (`windows-native`
+  feature, fix-win-keyring-1; before 2.5.0 the build silently used the
+  keyring crate's in-memory mock). Since M4 it is only read, like the
+  Linux keyring.
 
 Per-env keys (K2) resolve before the project key; they are only created
 explicitly (`key rotate --env`) so a commit can never silently fork a key.
@@ -172,12 +187,16 @@ reading its stubs' pragmas.
 
 ## 8 · Self-update (M5)
 
-curl (via the injected `Proc`) fetches release metadata → `SHA256SUMS` →
-binary. Two gates before anything is replaced: manifest checksum match,
-and the staged binary must execute `--version` and name the release. The
-previous binary is kept at `<exe>.prev`. Every abort path leaves the
-install byte-identical — the whole state machine runs against scripted
-responses in tests.
+curl (via the injected `Proc`) fetches release metadata → `SHA256SUMS` +
+`SHA256SUMS.minisig` → binary. Three gates before anything is replaced:
+the minisign signature over `SHA256SUMS` verifies against
+`RELEASE_PUBKEY` baked into the binary (D4/AR20), the binary matches its
+manifest line, and the staged binary must execute `--version` and name
+the release. The previous binary is kept at `<exe>.prev`. On Windows the
+running exe is moved aside to `<exe>.old` before the new one is placed,
+because Windows refuses to overwrite a running image (fix-win-update-1).
+Every abort path leaves the install byte-identical — the whole state
+machine runs against scripted responses in tests.
 
 ## 9 · The TUI (G-series, AR8)
 

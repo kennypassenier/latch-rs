@@ -24,8 +24,16 @@ rule 4). Expect a few minutes: Argon2id runs at production cost.
 ### `l1_credentials_tests.rs` (9) — K4 chain
 - Resolution order env > file > keyring, proven with all three populated;
   file-backend round-trip incl. wrong-passphrase; hex env injection for
-  binary slots; AR11 session cache honours TTL via the mock clock; M7:
-  headless prompt paths are hard errors.
+  binary slots; AR11 session cache honours TTL via the mock clock on a
+  passphrase file; M7: a passphrase file opened headless is a hard error;
+  login stores in the file even with a keyring up (M4).
+
+### `m4_durable_credentials_tests.rs` (5) — credentials survive a reboot
+- A write lands in the file although a keyring is up; PAT and key read
+  back after a "reboot" (files kept, keyring and env empty, no prompt);
+  the other OS reads them once the latch home is synced; the machine key
+  is random per machine and the credential is not plaintext in the file;
+  a passphrase file keeps its passphrase and gets no machine key.
 
 ### `l2_sync_tests.rs` (6) — the sync loop, two machines
 - Full round-trip: init → commit → push on A; raw clone of origin proves
@@ -137,13 +145,33 @@ Real git. Raw `cat` byte-identical + plaintext-scan over latch home;
 duplicate names: same value merges, different values error naming both
 files, `--last-wins` keeps the alphabetically last.
 
+### `feat_put_1_tests.rs` (6) — one file, one environment
+Real git, two machines sharing credentials. `put` replaces one file and
+the other files stay on the remote (read back by the other machine); a
+stale `--expect` is refused with nothing published and the current
+digest goes through; unchanged content publishes nothing; a machine
+without the key is refused (never mints one); a clone with unpushed work
+is refused; a group pragma is refused.
+
+### Windows regressions — `fix_win_keyring_1_tests.rs` (2), `fix_win_paths_1_tests.rs` (4), `fix_win_update_1_tests.rs` (2)
+Found on the real Windows 11 run (2026-09-26/27, see
+WINDOWS_TEST_CHECKLIST.md). On Linux: the manifest enables the Windows
+Credential Manager, OS paths with `\` name the project and the exe
+directory, the walk returns `/`-joined paths, an idle executable is
+replaced without leftovers. In the CI `windows` job (cfg(windows)):
+a credential round trip through the real Credential Manager, a `;`
+PATH read case-insensitively, and a running copy of PING.EXE replaced
+in place. `fix_color_1_tests.rs` (1, cli): no escape codes in a piped
+stderr.
+
 ### `d9_project_remove_tests.rs` (3) — project removal
 - E2E vs real git: remove sweeps every env's ciphertexts, other projects
   untouched, link+marker cleaned, keys KEPT and the kept key still opens
   the git history; wrong typed name refuses with nothing changed;
   headless without --yes is a hard error naming the flag, with --yes it
   works; --purge-keys empties the key slots; repo-wide list shows
-  linked/unlinked correctly.
+  linked/unlinked correctly; the project's `_escrow/<name>.json` goes
+  with it (fix-remove-escrow-1).
 
 ## Coverage measurement
 
@@ -171,7 +199,10 @@ real-platform adapters (keyring/terminal paths that only run live). Run locally 
 
 - Real GitHub network paths (login validation, M5 against the live API) —
   covered manually at release time (R11).
-- Real OS-keyring behaviour — the probe-based fallback is unit-tested;
-  the live keyring path is exercised on desktops in daily use.
+- Real OS-keyring behaviour on Linux — the probe-based fallback is
+  unit-tested; since M4 the keyring is only read. The Windows Credential
+  Manager round trip does run, in the CI `windows` job.
+- Windows beyond the CI job — covered by the manual checklist
+  (WINDOWS_TEST_CHECKLIST.md); last full run 2026-09-27 with 2.5.1/2.5.2.
 - L8 cutover of the real secrets repo — Kenny-gated, see
   REALIZATION_PLAN.md.
