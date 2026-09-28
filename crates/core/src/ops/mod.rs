@@ -7,5 +7,6 @@ pub mod init;
 pub mod keyops;
 pub mod login;
 pub mod project;
+pub mod put;
 pub mod sync;
 pub mod update;

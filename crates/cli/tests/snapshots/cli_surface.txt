@@ -12,6 +12,7 @@ Commands:
   status       Local vs. committed state per file (W5)
   run          Run a command with secrets injected into its environment — nothing ever touches disk (W6). Works offline on the cached clone (S5)
   cat          Print one env file decrypted to stdout — nothing touches disk (D10). Raw by default: byte-identical to what was committed
+  put          Replace ONE file of one environment with stdin and publish it, without a pull and without touching the other files (feat-put-1). Prints the sha256 of the stored content on stdout
   history      List the versions of this project's secrets (S3)
   rollback     Restore this project's secrets to an older version in the clone; push to publish, pull to apply locally (S3)
   verify       Authenticate every ciphertext in the repository without writing anything (S6)

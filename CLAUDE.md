@@ -16,8 +16,8 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.5.2 released + signed 2026-09-27**, installed on WSL through `latch update`. ws-tools keeps latch on the signed release on Garuda and WSL (workstation 282ce2e). Windows runtime-verified 2026-09-27 (checklist §1-§6, docs/WINDOWS_TEST_CHECKLIST.md run log; §4 `clone --to` and the §5 tamper test not run). v2.5.0 deliberately unsigned |
-| Next action | M4 only: credentials are in credentials.enc (2026-09-27). Once Garuda runs 2.5.x through ws-tools (`resume`), retire ~/.secrets/latch/env and read `latch state` without env after a reboot into the other OS — that closes M4 |
+| Build state | **v2.6.0 prepared** on branch `feat-put-single-file` (feat-put-1: `latch put`, `cat --project`). v2.5.2 is the last signed release, installed on WSL; ws-tools keeps latch on the signed release on Garuda and WSL. Windows runtime-verified 2026-09-27 |
+| Next action | feat-put-1: release 2.6.0 (tag after merge), stop before signing and report to the coordinator; the homelab dashboard's secret editing waits on it. M4: waiting on Kenny: booting Garuda once and running `resume` there, so ws-tools brings Garuda's latch to the signed 2.5.x+; then Claude retires ~/.secrets/latch/env and reads `latch state` without env after a reboot into the other OS. Credentials are in credentials.enc since 2026-09-27 |
 
 ## Deferred to end-of-project (Kenny-gated)
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.6.0 — 2026-09-28
+
+### Added (feat-put-1 — via mini-round, homelab dashboard request)
+- `latch put <file> --env <env> [--project <name>] [--expect <sha256>]`
+  replaces ONE file of one environment with stdin and pushes it, without a
+  project directory, a pull, or any other file touched. Prints the sha256
+  of the stored content; `--expect` refuses when the file changed since it
+  was read. Refuses a clone with unpushed work, a project whose key is not
+  on this machine (it never mints one), and group members. A rejected push
+  leaves the clone exactly as the remote is.
+- `latch cat --project <name>` reads one file by project name, without a
+  linked directory.
+
 ## 2.5.2 — 2026-09-27
 
 ### Fixed (fix-win-update-1, Windows runtime check §5)

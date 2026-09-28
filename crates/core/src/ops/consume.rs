@@ -251,6 +251,34 @@ pub fn cat(
     })
 }
 
+/// feat-put-1: the plaintext of one file addressed by project NAME rather
+/// than by a linked directory — for a caller like the homelab dashboard
+/// that holds credentials but no project checkout. No expansion, no group
+/// resolution: this is the stored content, the same bytes `latch put`
+/// compares its `--expect` digest against.
+pub fn cat_project(
+    p: &Platform,
+    project: &str,
+    env_name: &str,
+    rel_path: &str,
+) -> Result<Vec<u8>, LatchError> {
+    crate::discovery::validate_env(env_name)?;
+    let repo = repo_handle(p)?;
+    repo.ensure()?;
+    repo.refresh(false)?;
+    let key = project_key(p, project, env_name)?;
+    let enc_name = format!("{}.enc", crate::discovery::flatten(rel_path)?);
+    let sealed = repo
+        .read(&format!("{}/{}/{}", project, env_name, enc_name))?
+        .ok_or_else(|| {
+            LatchError::other(
+                format!("no file '{}' in {}/{}", rel_path, project, env_name),
+                "latch project list shows what exists; check the path and --env",
+            )
+        })?;
+    envelope::open(&key.key, &key.id, &sealed, &enc_name)
+}
+
 // ── S3 · history + rollback ─────────────────────────────────────────────
 
 #[derive(Debug)]

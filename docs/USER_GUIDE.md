@@ -147,6 +147,22 @@ project/environment (and then the D11 collision rules above apply).
 Content goes to stdout only; notices and errors go to stderr, so
 pipelines can consume the output as-is.
 
+### Replace one file (feat-put-1)
+
+```
+latch cat supersync/.env --env prod --project productivity | sha256sum
+printf 'TOKEN=new\n' | latch put supersync/.env --env prod --project productivity --expect <that sha256>
+```
+
+`latch put` takes the new content on stdin and publishes exactly that one
+file: no project directory, no pull, no other file touched. It prints the
+sha256 of what is now stored, which is the `--expect` for the next edit.
+With `--expect`, a file that changed since you read it is refused and
+nothing is published; `--expect absent` means the file must not exist
+yet. It never creates a key (the project's key must be on this machine),
+refuses a clone that holds unpushed work, and refuses group members, which
+`latch commit` keeps in step. The D13 escrow gate applies as for push.
+
 ### Templates (W7, AR13)
 
 ```

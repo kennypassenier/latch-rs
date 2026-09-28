@@ -133,6 +133,16 @@ Correction form approved by Kenny (Klopt), 2026-09-27; CI passed after
 the fix. **Proven 2026-09-27:** the signed 2.5.2 exe on DESKTOP-KENNY ran
 `latch update --reinstall` twice and replaced itself each time.
 
+### feat-put-1 · One-file write for the homelab dashboard — OPENED 2026-09-28
+**Asked by:** the homelab dashboard thread (homelab-admin, CT 120), with
+Kenny's decision in its architecture form (item arch-secrets-edit:
+"latch krijgt een commando voor één bestand").
+**Built for 2.6.0:** `latch put` + `latch cat --project`,
+`feat_put_1_tests.rs` (six E2E tests against real git).
+**Proof that closes it:** the dashboard replaces one prod file through
+`latch put` and every other file of that project/env is unchanged on the
+remote.
+
 ## Closed
 
 ### M3 · A scratch `LATCH_HOME` is not scratch for keyring-backed slots — CLOSED 2026-09-02
