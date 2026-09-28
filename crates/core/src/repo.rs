@@ -267,6 +267,36 @@ impl<'a> Repo<'a> {
         Ok(PushOutcome::Pushed)
     }
 
+    /// Throw away everything local and match the remote again (feat-put-1:
+    /// a single-file publish that did not land must not leave its change
+    /// behind to be swept into a later push). The clone is latch-managed,
+    /// so nothing of the user's lives here.
+    pub fn discard_local(&self) -> Result<(), LatchError> {
+        let _ = self.git_in(&["fetch", "--quiet", "origin"])?;
+        let has_remote = self
+            .git_in(&["rev-parse", "--verify", &format!("origin/{}", BRANCH)])?
+            .status
+            == 0;
+        let target = if has_remote {
+            format!("origin/{}", BRANCH)
+        } else {
+            "HEAD".to_string()
+        };
+        let out = self.git_in(&["reset", "--hard", &target, "--quiet"])?;
+        self.ok(
+            out,
+            "discard local clone changes",
+            "remove ~/.latch/repo and retry",
+        )?;
+        let out = self.git_in(&["clean", "-fdq"])?;
+        self.ok(
+            out,
+            "discard untracked clone files",
+            "remove ~/.latch/repo and retry",
+        )?;
+        Ok(())
+    }
+
     /// Read a file from the clone (None = absent).
     pub fn read(&self, rel: &str) -> Result<Option<Vec<u8>>, LatchError> {
         self.p.files.read(&format!("{}/{}", self.dir(), rel))

@@ -402,6 +402,27 @@ collide.
   alphabetically last value.
 
 
+### feat-put-1 · `latch put` — replace one file and publish it — **Must**
+*(Added 2026-09-28 by mini-round, on the homelab dashboard's request;
+Kenny's decision in the dashboard architecture form: "latch krijgt een
+commando voor één bestand".)* The write counterpart of D10: stdin
+becomes the new content of ONE file of ONE environment, sealed and
+pushed in a single step, with no project directory, no pull and no other
+file touched. `latch commit` cannot serve that caller: it records every
+ciphertext without a local file as removed and refuses only when ALL
+would go (the 17-file wipe of 2026-09-20). `put` refreshes the clone
+first, refuses a clone with unpushed work, never creates a key, refuses
+group members, and with `--expect <sha256>` refuses when the stored
+content changed since it was read; a push the remote rejects leaves the
+clone exactly as the remote is. `--project <name>` addresses the project
+without a linked directory, on `put` and on `cat`. stdout carries the
+sha256 of the stored content for the next `--expect`.
+- **Auto** (`feat_put_1_tests.rs`, real git): one file replaced, the
+  others stay on the remote, read back by another machine; stale
+  `--expect` refused with nothing published, current digest accepted;
+  unchanged content publishes nothing; no key → refused, not minted;
+  unpushed clone work → refused; group pragma → refused.
+
 ### S5 · Local cache + offline pull/run — **Should**
 Every successful pull caches the ciphertexts locally; `latch run` and
 `pull --offline` keep working through outages with a loud "using cached

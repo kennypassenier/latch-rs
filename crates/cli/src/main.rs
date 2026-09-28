@@ -108,6 +108,30 @@ enum Command {
         /// alphabetically last file's value instead of erroring (D11).
         #[arg(long)]
         last_wins: bool,
+        /// Address the project by name instead of the linked directory
+        /// (feat-put-1); prints the stored content, no --expand.
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Replace ONE file of one environment with stdin and publish it,
+    /// without a pull and without touching the other files (feat-put-1).
+    /// Prints the sha256 of the stored content on stdout.
+    Put {
+        /// Path of the file inside the project (as `latch status` shows it).
+        file: String,
+        #[arg(long, default_value = "dev")]
+        env: String,
+        /// Address the project by name instead of the linked directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Refuse unless the stored content still has this sha256 (the
+        /// digest `latch put` printed, or of what `latch cat` showed);
+        /// `absent` for a file that must not exist yet.
+        #[arg(long)]
+        expect: Option<String>,
+        /// Publish even though no key backup is recorded (D13).
+        #[arg(long)]
+        no_escrow: bool,
     },
     /// List the versions of this project's secrets (S3).
     History,
@@ -465,8 +489,62 @@ fn main() {
         Command::Cat {
             file,
             env,
+            project: Some(name),
+            expand,
+            ..
+        } => {
+            if expand {
+                Err(latch_core::error::LatchError::other(
+                    "--expand needs the project's linked directory",
+                    "run it from the project root without --project",
+                ))
+            } else {
+                latch_core::ops::consume::cat_project(&platform, &name, &env, &file).map(|out| {
+                    use std::io::Write;
+                    std::io::stdout().write_all(&out).expect("write to stdout");
+                })
+            }
+        }
+        Command::Put {
+            file,
+            env,
+            project,
+            expect,
+            no_escrow,
+        } => {
+            use std::io::Read;
+            let mut content = Vec::new();
+            std::io::stdin()
+                .read_to_end(&mut content)
+                .expect("read stdin");
+            let target = match project {
+                Some(name) => latch_core::ops::put::Target::Project(name),
+                None => latch_core::ops::put::Target::Cwd(cwd.clone()),
+            };
+            latch_core::ops::put::run(
+                &platform,
+                &target,
+                &env,
+                &file,
+                &content,
+                expect.as_deref(),
+                no_escrow,
+            )
+            .map(|out| {
+                if out.pushed {
+                    eprintln!("✓ {} in {}/{} replaced and pushed", file, out.project, env);
+                } else {
+                    eprintln!("✓ {} in {}/{} unchanged — nothing pushed", file, out.project, env);
+                }
+                println!("{}", out.sha256);
+            })
+        }
+        Command::Cat {
+            file,
+            env,
             expand,
             last_wins,
+            project: None,
         } => {
             latch_core::ops::consume::cat(&platform, &cwd, &env, &file, expand, last_wins).map(
                 |out| {

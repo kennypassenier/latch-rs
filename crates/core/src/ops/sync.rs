@@ -49,7 +49,7 @@ fn is_seen(p: &Platform, project: &str) -> Result<bool, LatchError> {
     Ok(p.files.read(&seen_path(p, project))?.is_some())
 }
 
-fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
+pub(crate) fn repo_handle<'a>(p: &'a Platform<'a>) -> Result<Repo<'a>, LatchError> {
     let config = Config::load(p)?;
     let repo_name = config.repo.ok_or_else(|| {
         LatchError::other(
@@ -188,7 +188,7 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
 /// creation would only move the problem. `--no-escrow` publishes anyway
 /// and RECORDS that choice, so an exception can never quietly become the
 /// norm.
-fn require_escrow(
+pub(crate) fn require_escrow(
     p: &Platform,
     repo: &crate::repo::Repo,
     proj: &str,
