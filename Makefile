@@ -56,7 +56,10 @@ ci-local:
 WIN_SUITES := -p latch-core --test fix_win_keyring_1_tests --test fix_win_paths_1_tests --test fix_win_update_1_tests
 check:
 	@echo "[1/4] gates (fmt, clippy -D warnings, tests)"
-	@GATE_FULL=1 .claude/hooks/gates.sh
+	@# One full test run per release (Kenny, 2026-09-29): skipped when the
+	@# commit gate stamped exactly this tree green (workstation/bin/gate-stamp).
+	@if [ -x $(HOME)/Projects/workstation/bin/gate-stamp ] && $(HOME)/Projects/workstation/bin/gate-stamp fresh; then \
+		echo "  already green on this tree at commit (gate-stamp)"; else GATE_FULL=1 .claude/hooks/gates.sh; fi
 	@echo "[2/4] Windows: build + credential store round trip, paths, update"
 	@if [ "$(WINDOWS_TESTS)" = skip ]; then echo "  SKIPPED on request (WINDOWS_TESTS=skip)"; \
 	else scripts/windows-tests.sh $(WIN_SUITES) || { rc=$$?; [ $$rc -eq 3 ] && echo "  no Windows here; rerun on WSL, or WINDOWS_TESTS=skip to go without" >&2; exit $$rc; }; fi
