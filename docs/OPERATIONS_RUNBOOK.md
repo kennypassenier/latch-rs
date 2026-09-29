@@ -338,8 +338,7 @@ updates.
 ### Per release
 
 ```bash
-# after the release PR is merged (main is branch-protected: CI green and
-# the branch up to date with main), tag the MERGE commit on main:
+# after the release PR is merged, tag the MERGE commit on main:
 git switch main && git pull --ff-only
 git tag v2.x.y
 make release TAG=v2.x.y   # make check, builds Linux + Windows + SHA256SUMS here, pushes the tag, publishes

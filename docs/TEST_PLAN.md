@@ -1,8 +1,10 @@
 # latch v2 — Test Plan
 
-What is proven, where, and how to run it. CI (`.github/workflows/ci.yml`)
-runs fmt + clippy `-D warnings` + all of this on every push; red CI blocks
-merge, no exceptions.
+What is proven, where, and how to run it. The commit gate runs fmt +
+clippy `-D warnings` + all of this; `make check` adds the Windows suites
+(on real Windows through WSL interop), the MSRV build and coverage, and
+every release runs it first. Nothing runs on GitHub Actions since
+2026-09-29.
 
 ```
 cargo test -p latch-core -p latch-cli -p latch-ui

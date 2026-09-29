@@ -65,8 +65,9 @@ brackets in the message (`[W12]`, `[L4b]`, `[meta]`).
   two gates for sessions opened in this directory. A second layer, no
   longer the only one (it was, until 2026-08-30).
 
-CI re-runs the same gates on every push; `main` has branch protection
-requiring the `gates` check, admins included. The legacy package is
+Nothing runs on GitHub Actions since 2026-09-29 (Kenny: every build and
+check runs locally); `make check` runs what CI ran, and the release runs it
+first. The legacy package is
 deliberately ungated (AR14).
 
 ## Hard rules for this repo
