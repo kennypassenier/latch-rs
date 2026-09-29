@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# D4 release signing (Garuda / any Linux). Run AFTER the release workflow
+# D4 release signing (Garuda / any Linux). Run AFTER scripts/release.sh
 # has published the binaries + SHA256SUMS for a tag. Downloads the
 # manifest, signs it with your OFFLINE minisign secret key, and uploads
 # SHA256SUMS.minisig to the release. Your secret key never touches GitHub.

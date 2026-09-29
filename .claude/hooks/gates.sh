@@ -4,6 +4,13 @@
 # package (AR14) is frozen reference and deliberately ungated.
 set -euo pipefail
 
+# Git exports GIT_DIR, GIT_INDEX_FILE and friends to a hook, as absolute
+# paths when the commit is made in a linked worktree. A test that runs git
+# in a fixture directory then acts on THIS repository: on 2026-09-29 the
+# escrow tests committed fixtures onto the branch being committed and
+# emptied its index. Drop them, as kp-themes-tui and kyu do.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+
 # ── Standing rule 7: a gate that does not predict the build is not a gate ──
 # The checks below rewrite files. cargo updates Cargo.lock, formatters
 # rewrite sources — and anything rewritten AFTER `git add` is green here

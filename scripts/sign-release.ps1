@@ -1,4 +1,4 @@
-# D4 release signing (Windows 11). Run AFTER the release workflow has
+# D4 release signing (Windows 11). Run AFTER scripts/release.sh has
 # published the binaries + SHA256SUMS for a tag. Your secret key never
 # touches GitHub.
 #

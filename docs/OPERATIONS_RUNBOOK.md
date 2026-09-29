@@ -341,13 +341,16 @@ updates.
 # after the release PR is merged (main is branch-protected: CI green and
 # the branch up to date with main), tag the MERGE commit on main:
 git switch main && git pull --ff-only
-git tag v2.x.y && git push origin v2.x.y  # CI builds Linux + Windows + SHA256SUMS
-# wait for the release workflow to finish, then sign locally:
+git tag v2.x.y
+make release TAG=v2.x.y   # make check, builds Linux + Windows + SHA256SUMS here, pushes the tag, publishes
 scripts/sign-release.sh v2.x.y           # Garuda or WSL (the key is in the shared secrets folder); scripts\sign-release.ps1 on Windows
 ```
 
-CI builds both OS binaries and one `SHA256SUMS`, publishes the Release,
-but does NOT sign (the secret key never touches GitHub). The sign script
+`scripts/release.sh` builds both OS binaries on this machine (Linux in
+`rust:1.97-bookworm`, Windows cross-built with cargo-xwin, both in docker, so
+WSL and Garuda need nothing extra) and one `SHA256SUMS`, and publishes the
+Release; nothing builds on GitHub Actions since 2026-09-29. It does NOT sign
+(the secret key stays offline). The sign script
 downloads the manifest, signs it with your offline key, and uploads
 `SHA256SUMS.minisig`. Verify afterwards from a previous build on each OS:
 `latch update` must find, verify the signature, and install; a release

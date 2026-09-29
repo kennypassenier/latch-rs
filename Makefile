@@ -2,7 +2,7 @@
 LXC_BUILD_IMAGE ?= debian:12-slim
 LXC_GLIBC_VERSION = 2.36
 
-.PHONY: bump-major bump-minor bump-patch show-version build build-linux ci-local install-hooks build-lxc
+.PHONY: bump-major bump-minor bump-patch show-version build build-linux ci-local check release install-hooks build-lxc
 
 show-version:
 	@grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/'
@@ -45,6 +45,38 @@ ci-local:
 	@echo "[4/4] msrv check (Rust 1.86)"
 	@cargo +1.86 check --locked
 	@echo "Local CI preflight passed"
+
+# What the CI workflow ran on every push until 2026-09-29, when Kenny moved
+# every build and check to his own machine ("alle builds lokaal"). The
+# release runs it first. The gates run in full (no cache skip); the Windows
+# suites run on real Windows through WSL interop and refuse on a machine
+# without it unless WINDOWS_TESTS=skip says so out loud; the MSRV build runs
+# in the rust:1.86 image, so no toolchain has to be installed for it;
+# coverage is informational, as it was, and runs where cargo-llvm-cov is.
+WIN_SUITES := -p latch-core --test fix_win_keyring_1_tests --test fix_win_paths_1_tests --test fix_win_update_1_tests
+check:
+	@echo "[1/4] gates (fmt, clippy -D warnings, tests)"
+	@GATE_FULL=1 .claude/hooks/gates.sh
+	@echo "[2/4] Windows: build + credential store round trip, paths, update"
+	@if [ "$(WINDOWS_TESTS)" = skip ]; then echo "  SKIPPED on request (WINDOWS_TESTS=skip)"; \
+	else scripts/windows-tests.sh $(WIN_SUITES) || { rc=$$?; [ $$rc -eq 3 ] && echo "  no Windows here; rerun on WSL, or WINDOWS_TESTS=skip to go without" >&2; exit $$rc; }; fi
+	@echo "[3/4] MSRV build (Rust 1.86, rust:1.86 image)"
+	@docker run --rm --user $$(id -u):$$(id -g) -e HOME=/tmp -e CARGO_HOME=/usr/local/cargo \
+		-v $(HOME)/.cargo/registry:/usr/local/cargo/registry -v $(HOME)/.cargo/git:/usr/local/cargo/git \
+		-v $(CURDIR):/src -w /src -e RUSTUP_TOOLCHAIN=1.86 rust:1.86 \
+		cargo build --locked -p latch-core -p latch-cli -p latch-ui --target-dir target-msrv
+	@echo "[4/4] coverage (informational)"
+	@if command -v cargo-llvm-cov >/dev/null; then cargo llvm-cov -p latch-core -p latch-cli -p latch-ui --summary-only; \
+	else echo "  skipped: cargo-llvm-cov not installed (cargo install cargo-llvm-cov)"; fi
+	@echo "check passed"
+
+# scripts/release.sh builds both binaries here and publishes them; see its
+# header. `make release TAG=v2.x.y` (DRY_RUN=1 to rehearse).
+release:
+ifndef TAG
+	$(error usage: make release TAG=v2.x.y)
+endif
+	scripts/release.sh $(TAG)
 
 install-hooks:
 	@mkdir -p .githooks

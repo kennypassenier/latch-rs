@@ -1,1 +1,6 @@
 /target
+/target-windows
+/target-release-linux
+/target-release-windows
+/dist
+/target-msrv
