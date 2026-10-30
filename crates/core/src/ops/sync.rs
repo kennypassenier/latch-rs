@@ -180,43 +180,10 @@ pub fn commit(p: &Platform, cwd: &str, env: &str) -> Result<CommitOutcome, Latch
 
 // ── W3 push ─────────────────────────────────────────────────────────────
 
-/// D13 (mini-round 2026-09-02): publishing is the moment ciphertext that
-/// only this machine's key can open leaves the machine. If that key has
-/// no recorded second copy, losing the keyring loses the secrets — which
-/// is exactly what happened. So the gate sits here rather than at key
-/// creation: a fresh key has no escrow yet by definition, and blocking
-/// creation would only move the problem. `--no-escrow` publishes anyway
-/// and RECORDS that choice, so an exception can never quietly become the
-/// norm.
-pub(crate) fn require_escrow(
-    p: &Platform,
-    repo: &crate::repo::Repo,
-    proj: &str,
-    env: &str,
-    no_escrow: bool,
-) -> Result<(), LatchError> {
-    let store = CredStore::new(p);
-    // No key here means nothing was sealed here either — nothing to guard.
-    let Some(key) = keys::for_env(&store, proj, env)? else {
-        return Ok(());
-    };
-    let label = &key.id.label;
-    let generation = key.id.generation;
-    if crate::escrow::has(repo, label, generation)? {
-        return Ok(());
-    }
-    if no_escrow {
-        crate::escrow::note_skipped(repo, label, generation, p.clock.now_unix())?;
-        return Ok(());
-    }
-    Err(LatchError::other(
-        format!(
-            "no key backup is recorded for '{}' (generation {}) — publishing now would put secrets in the repo that only this machine can open",
-            label, generation
-        ),
-        "run 'latch key backup <file>' first (it records the escrow, and re-running it is safe), then push again — or pass --no-escrow to publish without one, which stays visible in 'latch state'",
-    ))
-}
+// D13 used to refuse a push here when a key had no recorded backup. Since
+// 2026-10-30 coverage is only a warning (`ops::cover::warning`, printed by
+// the shell after the publish): the key wraps under the master passphrase
+// are the standing second copy, and the backup file is optional.
 
 pub fn push(
     p: &Platform,
@@ -230,13 +197,13 @@ pub fn push(
     let proj = project_for(p, cwd)?;
     let repo = repo_handle(p)?;
     repo.ensure()?;
-    require_escrow(p, &repo, &proj.name, env, no_escrow)?;
-    // B4: a shared group edited on two machines collides here as a plain
-    // git conflict whose remedies (--overwrite / --force) would silently
-    // drop one side. Before pushing, compare our group content against
-    // what the remote now holds; if BOTH moved off the shared baseline,
-    // raise the explicit W12b divergence error instead — unless the user
-    // already chose a side with --force.
+    let _ = no_escrow; // accepted for old scripts; publishing never refuses any more
+                       // B4: a shared group edited on two machines collides here as a plain
+                       // git conflict whose remedies (--overwrite / --force) would silently
+                       // drop one side. Before pushing, compare our group content against
+                       // what the remote now holds; if BOTH moved off the shared baseline,
+                       // raise the explicit W12b divergence error instead — unless the user
+                       // already chose a side with --force.
     if !force {
         groups::check_push_divergence(p, &repo, env)?;
     }

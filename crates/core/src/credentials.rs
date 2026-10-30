@@ -1,6 +1,9 @@
 //! Credential storage (K4, AR3, AR11, M4): the resolution chain that works
 //! everywhere — environment variables win, then the encrypted credential
-//! file, then the OS keyring. Writes always go to the file (M4, 2026-09-26):
+//! file, then the machine's env file (`latch.env`, see `envfile`), then the
+//! OS keyring. The env file mirrors every write, so on a machine that has
+//! both they agree; the older file stays the authority until Kenny retires
+//! it, and a machine with only the env file (a service host) reads that. Writes always go to the file (M4, 2026-09-26):
 //! the keyring on every Linux machine Kenny runs forgets at reboot (on WSL
 //! already at the end of a session), so it is only read, never written.
 //! The file is one AR10 envelope holding a JSON slot map, keyed by Argon2
@@ -34,6 +37,7 @@ pub const DEFAULT_SESSION_TTL: u64 = 15 * 60;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     EnvVar,
+    EnvFile,
     File,
     Keyring,
 }
@@ -134,29 +138,23 @@ impl<'a> CredStore<'a> {
             .map(|d| format!("{}/session.key", d))
     }
 
-    /// Resolve a slot (K4): env → file → keyring. Returns the value and
+    /// Resolve a slot (K4): env → file → env file → keyring. Returns the value and
     /// where it came from. Binary slots (`key:` / `group:`) are carried as
     /// hex in environment variables — env vars are text; the file and
     /// keyring layers store raw bytes.
     pub fn get(&self, slot: &str) -> Result<Option<(Vec<u8>, Source)>, LatchError> {
-        if let Some(v) = self.p.env.var(&env_var_for_slot(slot)) {
-            let value = if slot.starts_with("key:") || slot.starts_with("group:") {
-                hex::decode(v.trim()).map_err(|_| {
-                    LatchError::other(
-                        format!("{} is not valid hex", env_var_for_slot(slot)),
-                        "binary key slots are injected as hex (latch key show prints the right form)",
-                    )
-                })?
-            } else {
-                v.into_bytes()
-            };
-            return Ok(Some((value, Source::EnvVar)));
+        let var = env_var_for_slot(slot);
+        if let Some(v) = self.p.env.var(&var) {
+            return Ok(Some((decode_env_value(slot, &var, v)?, Source::EnvVar)));
         }
         if let Some(map) = self.read_file_map()? {
             if let Some(hexed) = map.slots.get(slot) {
                 let raw = hex_decode(hexed, slot)?;
                 return Ok(Some((raw, Source::File)));
             }
+        }
+        if let Some(v) = crate::envfile::lookup(self.p, &var)? {
+            return Ok(Some((decode_env_value(slot, &var, v)?, Source::EnvFile)));
         }
         if self.p.keyring.available() {
             if let Some(v) = self.p.keyring.get(slot)? {
@@ -176,6 +174,15 @@ impl<'a> CredStore<'a> {
         let (mut map, salt, key) = self.open_or_create_file()?;
         map.slots.insert(slot.into(), hex::encode(value));
         self.write_file_map(&map, &salt, &key)?;
+        // The machine's env file mirrors every write, so the one file a
+        // service loads never lags the encrypted file.
+        if mirrors_to_env_file(slot) {
+            crate::envfile::set(
+                self.p,
+                &env_var_for_slot(slot),
+                &encode_env_value(slot, value),
+            )?;
+        }
         Ok(Source::File)
     }
 
@@ -187,6 +194,9 @@ impl<'a> CredStore<'a> {
             let (mut map, salt, key) = self.open_or_create_file()?;
             map.slots.remove(slot);
             self.write_file_map(&map, &salt, &key)?;
+        }
+        if mirrors_to_env_file(slot) {
+            crate::envfile::remove(self.p, &env_var_for_slot(slot))?;
         }
         Ok(())
     }
@@ -365,6 +375,38 @@ impl<'a> CredStore<'a> {
             self.p.files.write_atomic(&path, key)?;
         }
         Ok(())
+    }
+}
+
+/// Rotation leftovers (`key:<label>#prev`) live only in the encrypted file:
+/// they are transient and `#` is not a valid environment variable name.
+pub(crate) fn mirrors_to_env_file(slot: &str) -> bool {
+    !slot.contains('#')
+}
+
+/// Binary slots (`key:` / `group:`) travel as hex in text; the pat as is.
+pub(crate) fn is_binary_slot(slot: &str) -> bool {
+    slot.starts_with("key:") || slot.starts_with("group:")
+}
+
+pub(crate) fn encode_env_value(slot: &str, value: &[u8]) -> String {
+    if is_binary_slot(slot) {
+        hex::encode(value)
+    } else {
+        String::from_utf8_lossy(value).into_owned()
+    }
+}
+
+pub(crate) fn decode_env_value(slot: &str, var: &str, v: String) -> Result<Vec<u8>, LatchError> {
+    if is_binary_slot(slot) {
+        hex::decode(v.trim()).map_err(|_| {
+            LatchError::other(
+                format!("{} is not valid hex", var),
+                "binary key slots are injected as hex (latch key show prints the right form)",
+            )
+        })
+    } else {
+        Ok(v.into_bytes())
     }
 }
 

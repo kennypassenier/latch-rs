@@ -519,6 +519,21 @@ W8 state + one-key S6 audit, per-file green/red with remedy.
 Guided login (M1, live validation), project linking (W1), rotation with
 consequences explained (K3), key backup/restore (K6).
 
+### master-login-1 · Keys under one master passphrase in the repo — **Must**
+*(Added 2026-10-30 by Kenny's instruction, after the D13 escrow file had
+become mandatory for publishing and a new machine could not decrypt
+anything after `latch login`. Amends D13: the escrow becomes optional.)*
+
+`latch login --master` wraps every project and group key under one master
+passphrase in `_keywrap/` of the secrets repo and, on a machine without
+keys, fetches them. Acceptance: a machine with only the token, the repo
+and the passphrase runs `latch login --master` and `latch pull` and gets
+the same files; the migration of an existing store never rewrites existing
+ciphertext, snapshots the old files, proves every file byte for byte
+through the new env file alone and rolls back on any difference.
+Proven by `master_login_tests.rs` (11 tests) and a run on a throwaway
+container with an empty home (2026-10-30).
+
 ---
 Final tally: 29 Must · 13 Should · 0 Could · 2 Won't + 1 withdrawn (45 entries).
 Next: architecture decisions (phase 3), then testing & documentation

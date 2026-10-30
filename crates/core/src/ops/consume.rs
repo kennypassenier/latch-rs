@@ -429,6 +429,9 @@ pub struct ProjectState {
     /// D13: what the repo knows about a second copy of this key. `None`
     /// when there is no key or no clone to ask.
     pub escrow: Option<crate::escrow::EscrowStatus>,
+    /// 2026-10-30: this key generation is in the repo under the master
+    /// passphrase. `None` when there is no key or no clone to ask.
+    pub wrapped: Option<bool>,
     /// D14: a value IS stored for this project, but it is not a key —
     /// how many bytes it holds. The classic case is 68 hex characters
     /// written into a slot that wants 34 raw bytes: reporting that as
@@ -475,6 +478,12 @@ pub fn state(p: &Platform) -> Result<StateReport, LatchError> {
             }
             _ => None,
         };
+        let wrapped = match (&repo, &key) {
+            (Some(r), Some((_, generation))) => {
+                crate::keywrap::has_wrap(r, &format!("key:{}", proj.name), *generation).ok()
+            }
+            _ => None,
+        };
         projects.push(ProjectState {
             name: proj.name.clone(),
             dir: proj.dir.clone(),
@@ -484,6 +493,7 @@ pub fn state(p: &Platform) -> Result<StateReport, LatchError> {
                 || p.files.read(&format!("{}/.env", proj.dir))?.is_some(),
             key,
             escrow,
+            wrapped,
             key_unreadable_bytes,
         });
     }

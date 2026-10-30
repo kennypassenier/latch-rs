@@ -18,7 +18,7 @@ use crate::envelope;
 use crate::error::LatchError;
 use crate::keys;
 use crate::lock;
-use crate::ops::sync::{project_for, repo_handle, require_escrow};
+use crate::ops::sync::{project_for, repo_handle};
 use crate::platform::Platform;
 use crate::repo::{PushOutcome, RefreshState};
 
@@ -127,7 +127,7 @@ pub fn run(
     let sealed = envelope::seal(&key.key, &key.id, content)?;
     let published = (|| {
         repo.write(&enc_rel, &sealed)?;
-        require_escrow(p, &repo, &project, env, no_escrow)?;
+        let _ = no_escrow; // accepted for old scripts; publishing never refuses any more
         repo.push(&format!("put {}/{}/{}", project, env, rel_path), false)
     })();
     match published {

@@ -84,6 +84,12 @@ fn seed(tmp: &tempdir::TempDir, origin: &str) -> (Machine, String, String) {
     sync::commit(&pa, &app.display().to_string(), "prod").unwrap();
     sync::push(&pa, &app.display().to_string(), "prod", false, true).unwrap();
     sync::commit(&pa, &other.display().to_string(), "dev").unwrap();
+    // Publishing no longer writes an escrow note by itself, so record one
+    // per project here: the removal test needs records to sweep and keep.
+    let repo = consume::repo_handle(&pa).unwrap();
+    for label in ["app", "other"] {
+        latch_core::escrow::note(&repo, label, 1, "invented-digest", "/invented/path", 0).unwrap();
+    }
     sync::push(&pa, &other.display().to_string(), "dev", false, true).unwrap();
     (a, app.display().to_string(), other.display().to_string())
 }

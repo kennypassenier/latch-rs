@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.7.0 — 2026-10-30
+
+### Added (master-login-1 — Kenny, 2026-10-30)
+- `latch login --master`: puts every project and group key in the secrets
+  repo, sealed under ONE master passphrase (`_keywrap/`, same envelope and
+  Argon2 parameters as before, no format change), and on a machine that
+  has no keys brings them over. A new machine needs only the token, the
+  repo and that passphrase: `latch login --master`, then `latch pull`.
+  latch generates the passphrase (26 symbols, 130 bits), shows it once and
+  asks for confirmation that it is saved. Scripts set
+  `LATCH_MASTER_PASSPHRASE`.
+- The migration is built to lose nothing: a dry run (`--dry-run`) reports,
+  per project, how many files open; a snapshot of the credential files is
+  kept in `<latch home>/migration-snapshots/<unix time>/`; every file that
+  opened through the old store must open to byte-identical plaintext
+  through the new env file alone, or everything is rolled back; the wraps
+  are re-read from the repo and compared before "done". Existing
+  ciphertext in the repo is never rewritten, and `credentials.enc` is
+  never deleted. `--allow-missing` continues past files whose key nobody
+  holds; v1 leftovers (not v2 envelopes) are reported and left alone.
+- One env file per machine, `<latch home>/latch.env` (mode 0600): the
+  same `LATCH_PAT` / `LATCH_KEY_…` variables, mirrored on every write,
+  loadable as a systemd `EnvironmentFile`. Lookup order is environment,
+  `credentials.enc`, `latch.env`, keyring.
+- `latch state` shows per project whether the key is wrapped in the repo.
+
+### Changed (D13 amendment)
+- `latch push` and `latch put` no longer refuse when a key has no recorded
+  backup. They publish and print a warning when the key is neither wrapped
+  in the repo nor escrowed. `--no-escrow` is accepted and ignored.
+  `latch key backup` stays, as an optional offline copy.
+
+
 ## 2.6.0 — 2026-09-28
 
 ### Added (feat-put-1 — via mini-round, homelab dashboard request)

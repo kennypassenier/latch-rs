@@ -23,6 +23,25 @@ Prompts for a GitHub PAT (or pass `--pat` / set `LATCH_PAT`), **validates
 both live** (`git ls-remote`) and stores them via the credential chain
 (K4). A wrong PAT or repo name fails immediately, not at first push.
 
+### Master passphrase: a new machine in two commands (master-login-1)
+
+```
+latch login --master --dry-run   # reads only: keys held, files that open
+latch login --master             # wraps the keys, or brings them to this machine
+```
+
+`--master` also puts every key under one master passphrase in the secrets
+repo (`_keywrap/`). The first time, latch generates the passphrase, shows
+it once and asks whether it is saved in your password manager. On a new
+machine it asks for that passphrase, fetches the keys and writes them to
+`<latch home>/latch.env`; `latch pull` then works. Your password manager
+holds two secrets: the GitHub token and this passphrase. Nothing is
+overwritten without proof: a snapshot of the old store goes to
+`<latch home>/migration-snapshots/`, every file is decrypted through the
+new store and compared byte for byte, and any difference rolls it all back.
+Pass `--allow-missing` to continue when the repo holds files for keys that
+nobody here has. Non-interactive: set `LATCH_MASTER_PASSPHRASE`.
+
 ### Link a project (W1)
 
 ```
@@ -84,21 +103,20 @@ latch pull                # download + decrypt, all-or-nothing
   are hiding (a view only — a commit still respects the rules).
 - Commit skips unchanged files (no no-op re-encryptions in history) and
   removes ciphertexts for locally-deleted files.
-- **`push` needs a recorded key backup (D13, since 2.3.0).** Publishing is
-  the moment your secrets start depending on one key, so latch refuses
-  while that key has no escrow on record:
+- **`push` warns when a key has no second copy (D13, changed in 2.7.0).**
+  Publishing is the moment your secrets start depending on one key. Since
+  2.7.0 latch no longer refuses; it publishes and prints
 
   ```
-  ✗ no key backup is recorded for 'myapp' (generation 1) — publishing now
-    would put secrets in the repo that only this machine can open
-    :: run 'latch key backup <file>' first ...
+  warning: key 'myapp' (generation 1) exists on this machine only :: run
+    'latch login --master' ...
   ```
 
-  One run of `latch key backup <file>` fixes it for good (safe to re-run,
-  and a rotation asks again because the old escrow cannot open what the
-  new key seals). `--no-escrow` publishes anyway and records that choice,
-  which `latch state` keeps showing until a real escrow covers it. See
-  OPERATIONS_RUNBOOK R14 for where an escrow belongs.
+  unless the key is wrapped in the repo under the master passphrase
+  (`latch login --master`) or an escrow was recorded (`latch key backup
+  <file>`). A rotation mints a new generation, which is uncovered until
+  wrapped again. `--no-escrow` is accepted and ignored. See
+  OPERATIONS_RUNBOOK R14.
 - Pull is **all-or-nothing**: one corrupt file means nothing is written.
 - Pull refuses to overwrite locally-modified files without `--overwrite`
   (S4); push refuses when the remote has newer work — `latch pull` first,
@@ -161,7 +179,7 @@ With `--expect`, a file that changed since you read it is refused and
 nothing is published; `--expect absent` means the file must not exist
 yet. It never creates a key (the project's key must be on this machine),
 refuses a clone that holds unpushed work, and refuses group members, which
-`latch commit` keeps in step. The D13 escrow gate applies as for push.
+`latch commit` keeps in step. The D13 warning applies as for push.
 
 ### Templates (W7, AR13)
 

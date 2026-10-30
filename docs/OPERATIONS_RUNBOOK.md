@@ -98,8 +98,9 @@ project, or new group. Without a backup and with all machines lost, the
 repository is permanently unreadable — by design, and on 2026-09-02 that
 stopped being theory.
 
-Since 2.3.0 this is no longer only advice: the backup is also RECORDED,
-and `latch push` refuses while a key has no record (D13, see R14).
+Since 2.3.0 the backup is also RECORDED (D13, see R14). Since 2.7.0 a key
+wrapped under the master passphrase in the repo counts as a second copy,
+and `latch push` only warns when neither exists.
 
 ## R7 · Update latch
 
@@ -235,6 +236,15 @@ project's files it records every other file as removed.
 
 ## R14 · Key escrow: the second copy latch insists on (D13)
 
+> **2.7.0:** the insistence is now a warning, and the master passphrase
+> (`latch login --master`, master-login-1) is the standing second copy.
+> The escrow file below is optional. Recovery on a lost machine: `latch
+> login --master` with the token and the passphrase, then `latch pull`.
+> If a migration ever goes wrong, the snapshot in
+> `<latch home>/migration-snapshots/<unix time>/` holds the previous
+> credential files byte for byte.
+
+
 Since 2.3.0 latch refuses to publish secrets sealed with a key that has
 no recorded backup. One command satisfies it, and it is safe to re-run:
 
@@ -259,9 +269,9 @@ Rules worth knowing:
 - **A rotation needs a new escrow.** `latch key rotate` mints a new
   generation and the old escrow cannot open what the new key seals, so
   the next push asks again.
-- **`--no-escrow` exists and is recorded.** It publishes without an
-  escrow and leaves a line in `latch state` that stays until a real
-  escrow covers that generation. Use it for a throwaway, not as habit.
+- **`--no-escrow` is a no-op since 2.7.0.** Publishing never refuses; the
+  warning after the push is the reminder. A key wrapped in the repo
+  (`latch login --master`) needs no escrow file.
 - **Where the escrow belongs:** somewhere that is not this machine. The
   homelab's now sits in three places of different kinds (workstation,
   the Proxmox host's vault, and restic offsite). Three copies of one

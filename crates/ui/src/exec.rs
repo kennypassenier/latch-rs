@@ -11,6 +11,7 @@ use crate::model::*;
 fn source_char(s: Source) -> char {
     match s {
         Source::EnvVar => 'E',
+        Source::EnvFile => 'L',
         Source::File => 'F',
         Source::Keyring => 'K',
     }

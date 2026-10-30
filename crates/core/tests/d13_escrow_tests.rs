@@ -84,33 +84,28 @@ fn seed(tmp: &tempdir::TempDir, origin: &str) -> (Machine, String) {
 }
 
 #[test]
-fn push_refuses_under_a_key_with_no_recorded_backup() {
+fn push_warns_but_publishes_under_a_key_with_no_recorded_backup() {
     let (tmp, origin) = scratch();
     let (a, proj) = seed(&tmp, &origin);
     let pa = a.platform();
 
-    // The whole point: publishing puts ciphertext in a place this machine
-    // can lose the only key to. Without a recorded escrow, refuse.
-    let err = sync::push(&pa, &proj, "dev", false, false).unwrap_err();
-    let msg = format!("{err}");
-    assert!(msg.contains("no key backup is recorded"), "{msg}");
-    assert!(msg.contains("app"), "names the key: {msg}");
-    assert!(msg.contains("latch key backup"), "remedy first: {msg}");
-    assert!(msg.contains("--no-escrow"), "escape named: {msg}");
-
-    // Nothing reached the origin.
+    // 2026-10-30: coverage is a warning, never a refusal. The push goes
+    // through and the warning names the key and the remedy.
+    sync::push(&pa, &proj, "dev", false, false).unwrap();
+    let w = latch_core::ops::cover::warning(&pa, "app", "dev")
+        .unwrap()
+        .expect("an uncovered key warns");
+    assert!(w.contains("'app'"), "names the key: {w}");
+    assert!(w.contains("latch login --master"), "remedy first: {w}");
     let probe = tmp.path().join("probe");
     std::process::Command::new("git")
         .args(["clone", "-q", &origin])
         .arg(&probe)
         .status()
         .unwrap();
-    assert!(
-        !probe.join("app/dev/.env.enc").exists(),
-        "nothing published"
-    );
+    assert!(probe.join("app/dev/.env.enc").exists(), "published");
 
-    // Taking the backup records it, and the same push then goes through.
+    // Taking the backup records it, and the warning goes away.
     let escrow_file = tmp.path().join("escrow.latchbk");
     let out = keyops::backup(&pa, &escrow_file.display().to_string()).unwrap();
     assert!(
@@ -118,7 +113,9 @@ fn push_refuses_under_a_key_with_no_recorded_backup() {
         "backup records the escrow: {:?}",
         out.recorded
     );
-    sync::push(&pa, &proj, "dev", false, false).unwrap();
+    assert!(latch_core::ops::cover::warning(&pa, "app", "dev")
+        .unwrap()
+        .is_none());
 
     // The record is in the REPO — it has to survive losing this machine.
     let repo = consume::repo_handle(&pa).unwrap();
@@ -149,33 +146,22 @@ fn push_refuses_under_a_key_with_no_recorded_backup() {
 }
 
 #[test]
-fn no_escrow_publishes_but_the_choice_stays_visible() {
+fn the_old_no_escrow_flag_is_accepted_and_changes_nothing() {
     let (tmp, origin) = scratch();
     let (a, proj) = seed(&tmp, &origin);
     let pa = a.platform();
 
-    // The agreed fallback: an exception is allowed, but never invisible.
+    // Old scripts pass the flag; publishing neither needs nor records it.
     sync::push(&pa, &proj, "dev", false, true).unwrap();
     let st = consume::state(&pa).unwrap();
     let app = st.projects.iter().find(|p| p.name == "app").unwrap();
     assert!(
-        matches!(
-            app.escrow.as_ref().unwrap(),
-            EscrowStatus::SkippedOnPurpose { generation: 1, .. }
-        ),
+        matches!(app.escrow.as_ref().unwrap(), EscrowStatus::None),
         "{:?}",
         app.escrow
     );
 
-    // A later push needs no new decision — the skip is already recorded.
-    write(
-        std::path::Path::new(&proj).join(".env").as_path(),
-        "TOKEN=second\n",
-    );
-    sync::commit(&pa, &proj, "dev").unwrap();
-    sync::push(&pa, &proj, "dev", false, false).unwrap_err();
-
-    // Taking the backup replaces the skip with a real escrow.
+    // Taking the backup records a real escrow.
     let escrow_file = tmp.path().join("escrow.latchbk");
     keyops::backup(&pa, &escrow_file.display().to_string()).unwrap();
     sync::push(&pa, &proj, "dev", false, false).unwrap();
@@ -202,8 +188,11 @@ fn a_rotated_key_needs_its_own_escrow() {
     let repo = consume::repo_handle(&pa).unwrap();
     assert!(escrow::has(&repo, "app", 1).unwrap());
     assert!(!escrow::has(&repo, "app", 2).unwrap());
-    let err = sync::push(&pa, &proj, "dev", false, false).unwrap_err();
-    assert!(format!("{err}").contains("generation 2"), "{err}");
+    sync::push(&pa, &proj, "dev", false, false).unwrap();
+    let w = latch_core::ops::cover::warning(&pa, "app", "dev")
+        .unwrap()
+        .expect("the new generation is uncovered");
+    assert!(w.contains("generation 2"), "{w}");
 
     keyops::backup(&pa, &escrow_file.display().to_string()).unwrap();
     sync::push(&pa, &proj, "dev", false, false).unwrap();

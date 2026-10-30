@@ -45,6 +45,9 @@ Options:
       --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
       --pat <PAT>        GitHub personal access token (or set LATCH_PAT)
       --repo <REPO>      Secrets repository as owner/name
+      --master           Also put this machine's keys under ONE master passphrase in the repo, and/or bring those keys here (a new machine needs only the token, the repo and the passphrase). Migrates automatically with a snapshot and a per-file proof; see --dry-run
+      --dry-run          With --master: read and report only, write nothing
+      --allow-missing    With --master: continue although some files need keys that neither this machine nor the repo holds; those stay closed
   -h, --help             Print help
 
 ═══ latch init --help
@@ -76,7 +79,6 @@ Options:
       --env <ENV>        [default: dev]
       --non-interactive  Never prompt: anything that would need interactive input becomes a hard error (M7). Auto-detected when there is no terminal
       --force            Make YOUR content the newest version (history is kept)
-      --no-escrow        Publish even though no key backup is recorded for this key (D13). The choice is recorded and stays visible in `latch state` until an escrow covers this generation
   -h, --help             Print help
 
 ═══ latch pull --help

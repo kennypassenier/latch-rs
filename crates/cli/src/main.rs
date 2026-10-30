@@ -2,6 +2,8 @@
 //! platform, parses arguments, prints results; every decision lives in
 //! core.
 
+mod master;
+
 use clap::{Parser, Subcommand};
 use latch_core::platform::real::{
     latch_home, runtime_dir, RealClock, RealEnv, RealFiles, RealKeyring, RealProc, RealPrompt,
@@ -35,6 +37,19 @@ enum Command {
         /// Secrets repository as owner/name.
         #[arg(long)]
         repo: Option<String>,
+        /// Also put this machine's keys under ONE master passphrase in the
+        /// repo, and/or bring those keys here (a new machine needs only
+        /// the token, the repo and the passphrase). Migrates automatically
+        /// with a snapshot and a per-file proof; see --dry-run.
+        #[arg(long)]
+        master: bool,
+        /// With --master: read and report only, write nothing.
+        #[arg(long, requires = "master")]
+        dry_run: bool,
+        /// With --master: continue although some files need keys that
+        /// neither this machine nor the repo holds; those stay closed.
+        #[arg(long, requires = "master")]
+        allow_missing: bool,
     },
     /// Link this directory to a project (W1); creates its key on first use.
     Init {
@@ -54,10 +69,9 @@ enum Command {
         /// Make YOUR content the newest version (history is kept).
         #[arg(long)]
         force: bool,
-        /// Publish even though no key backup is recorded for this key
-        /// (D13). The choice is recorded and stays visible in
-        /// `latch state` until an escrow covers this generation.
-        #[arg(long)]
+        /// Deprecated and ignored: publishing never refuses for a missing
+        /// key backup any more (a warning is printed instead).
+        #[arg(long, hide = true)]
         no_escrow: bool,
     },
     /// Download and decrypt this project's env files (W4), all-or-nothing.
@@ -386,7 +400,19 @@ fn main() {
         .unwrap_or_else(|_| ".".into());
 
     let result = match cli.command {
-        Command::Login { pat, repo } => login(&platform, pat, repo),
+        Command::Login {
+            pat,
+            repo,
+            master,
+            dry_run,
+            allow_missing,
+        } => {
+            if master {
+                master::run(&platform, pat, repo, dry_run, allow_missing)
+            } else {
+                login(&platform, pat, repo)
+            }
+        }
         Command::Init { name } => latch_core::ops::init::run(&platform, &cwd, name).map(|out| {
             if out.already_linked {
                 println!("already linked to project '{}'", out.project);
@@ -439,11 +465,14 @@ fn main() {
             force,
             no_escrow,
         } => latch_core::ops::sync::push(&platform, &cwd, &env, force, no_escrow)
-            .map(|out| match out {
-                latch_core::repo::PushOutcome::Pushed => println!("✓ pushed"),
-                latch_core::repo::PushOutcome::NothingToPush => {
-                    println!("nothing to push (commit first?)")
+            .map(|out| {
+                match out {
+                    latch_core::repo::PushOutcome::Pushed => println!("✓ pushed"),
+                    latch_core::repo::PushOutcome::NothingToPush => {
+                        println!("nothing to push (commit first?)")
+                    }
                 }
+                cover_warning(&platform, &cwd, &env);
             }),
         Command::Pull {
             env,
@@ -531,6 +560,7 @@ fn main() {
                 no_escrow,
             )
             .map(|out| {
+                cover_warning_for(&platform, &out.project, &env);
                 if out.pushed {
                     eprintln!("✓ {} in {}/{} replaced and pushed", file, out.project, env);
                 } else {
@@ -658,6 +688,9 @@ fn main() {
                 // taking the secrets with it — so state says so, in the
                 // same breath as the key itself.
                 use latch_core::escrow::{EscrowStatus, FileState};
+                if pr.wrapped == Some(true) {
+                    println!("  key wrap   : in the repo under the master passphrase");
+                }
                 match &pr.escrow {
                     Some(EscrowStatus::Recorded {
                         generation,
@@ -680,9 +713,10 @@ fn main() {
                         "  escrow     : NONE for gen {} — deliberately skipped with --no-escrow :: 'latch key backup <file>' still fixes it",
                         generation
                     ),
-                    Some(EscrowStatus::None) => println!(
-                        "  escrow     : NONE — this key exists in one place only :: run 'latch key backup <file>'"
+                    Some(EscrowStatus::None) if pr.wrapped != Some(true) => println!(
+                        "  escrow     : NONE — this key exists in one place only :: run 'latch login --master' (or 'latch key backup <file>')"
                     ),
+                    Some(EscrowStatus::None) => {}
                     None => {}
                 }
             }
@@ -1038,12 +1072,27 @@ fn login(
         latch_core::credentials::Source::Keyring => "OS keyring",
         latch_core::credentials::Source::File => "encrypted credential file",
         latch_core::credentials::Source::EnvVar => "environment",
+        latch_core::credentials::Source::EnvFile => "machine env file (latch.env)",
     };
     println!(
         "✓ logged in — repo {} verified, token stored in the {}",
         out.repo, where_
     );
     Ok(())
+}
+
+/// Print the "key exists on this machine only" warning, if it applies.
+/// A warning, never an error: publishing already succeeded.
+fn cover_warning(p: &Platform, cwd: &str, env: &str) {
+    if let Ok(proj) = latch_core::ops::sync::project_for(p, cwd) {
+        cover_warning_for(p, &proj.name, env);
+    }
+}
+
+fn cover_warning_for(p: &Platform, project: &str, env: &str) {
+    if let Ok(Some(w)) = latch_core::ops::cover::warning(p, project, env) {
+        eprintln!("{} {w}", label("33", "warning:"));
+    }
 }
 
 /// fix-color-1: paint a stderr label only when stderr is a terminal and

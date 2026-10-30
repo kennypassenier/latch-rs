@@ -344,7 +344,7 @@ pub(crate) fn enumerate_slots(p: &Platform, store: &CredStore) -> Result<Vec<Str
 /// repo layout expects yet this machine does NOT hold (K1: a backup that
 /// silently omits a key it can't see must SAY so, not report success as
 /// if complete).
-fn enumerate_with_skipped(
+pub(crate) fn enumerate_with_skipped(
     p: &Platform,
     store: &CredStore,
 ) -> Result<(Vec<String>, Vec<String>), LatchError> {
