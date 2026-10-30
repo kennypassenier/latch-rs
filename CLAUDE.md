@@ -16,8 +16,8 @@ This project follows the dev procedure in `~/Projects/dev-procedure/`
 | Last completed gate | Form 4 · retrospective: R1/R2/R3/R6 adopted, ecosystem entry confirmed (see docs/REALIZATION_PLAN.md gate log) |
 | Next gate | M4 mini-round form (durable credential file as primary store) |
 | AFK mode | off |
-| Build state | **v2.7.0 prepared 2026-10-30** (master-login-1: `latch login --master`, key wraps under one master passphrase in `_keywrap/`, one env file `latch.env` per machine, D13 escrow gate is now a warning). Kenny's own store migrated and proven (4 keys, 23 of 23 files); new-machine run proven on a throwaway container. v2.6.0 is the last signed release until Kenny signs 2.7.0 |
-| Next action | Kenny signs the 2.7.0 release (`scripts/sign-release.sh v2.7.0`) and installs it through ws-tools; then `~/.secrets/latch/env` (interim dual-boot file) can be retired and the host's latch 1.0.27 replaced — both Kenny's decisions. Parked: ssh-key based wrapping (ed25519 to x25519) as an optional later route |
+| Build state | **v2.7.0 released + signed 2026-10-30** (master-login-1: `latch login --master`, key wraps under one master passphrase in `_keywrap/`, one env file `latch.env` per machine, D13 escrow gate is now a warning). Kenny's store migrated and proven (4 keys, 23 of 23 files); new-machine run proven on a throwaway container (CT 997, removed). Installed on WSL; ws-tools/`latch update` brings Garuda to it |
+| Next action | Garuda: pull workstation, install 2.7.0, `systemctl --user daemon-reload` (PENDING_PER_OS.md; the shared `~/.secrets/latch/env` is already `env.bak`). Host: the homelab work installs 2.7.0 and sets the v1 config aside; Kenny types token and passphrase. Open proof from M4: the key surviving a Garuda reboot. Parked: ssh-key based wrapping (ed25519 to x25519) |
 
 ## Deferred to end-of-project (Kenny-gated)
 
