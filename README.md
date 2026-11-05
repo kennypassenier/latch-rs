@@ -31,8 +31,11 @@ echo "$new" | latch put api/.env --env prod --project myapp   # replace one file
 - **File groups** — share one file's content across projects with a
   one-line pragma; one edit fans out at commit, two conflicting edits are
   a hard error with an explicit resolve.
-- **Per-env keys, rotation, offline key backups** — blast-radius
-  isolation and a real answer to "all my machines died".
+- **Per-env keys, rotation, a master passphrase** — blast-radius
+  isolation and a real answer to "all my machines died": `latch login
+  --master` wraps every key in the repo under one passphrase, so a new
+  machine needs only the token, the repo and that passphrase. Offline key
+  backups (`latch key backup`) stay as an optional extra copy.
 - **Machine clone** — `latch clone --to user@host` moves exactly the
   credentials you scope, end-to-end encrypted with a verify code.
 - **Never hangs** — without a TTY every would-be prompt is a hard error

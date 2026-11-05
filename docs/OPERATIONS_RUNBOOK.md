@@ -113,8 +113,8 @@ mv $(latch path | awk 'NR==1{print $3}').prev $(latch path | awk 'NR==1{print $3
 ```
 
 `--reinstall` exists for one situation (D15): a machine where latch was
-built from source runs the right version in bytes the release workflow
-never produced, so the signature covers nothing that is actually on
+built from source runs the right version in bytes the release build
+(`scripts/release.sh`) never produced, so the signature covers nothing that is actually on
 disk. Plain `update` cannot see that — it compares version numbers —
 and reports "already current". The flag lifts only the
 strictly-newer check; an older release is still refused, and the signed
